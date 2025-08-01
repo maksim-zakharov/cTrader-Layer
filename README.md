@@ -4,7 +4,7 @@ This implementation is created and maintained by Reiryoku Technologies and its c
 
 ## Installation
 ```console
-npm install @reiryoku/ctrader-layer
+npm install @max89701/ctrader-layer
 ```
 
 ## Usage
@@ -12,7 +12,7 @@ For the cTrader Open API usage refer to the [Open API Documentation](https://spo
 
 ### How to establish a connection
 ```javascript
-const { CTraderConnection } = require("@reiryoku/ctrader-layer");
+const { CTraderConnection } = require("@max89701/ctrader-layer");
 
 const connection = new CTraderConnection({
     host: "demo.ctraderapi.com",

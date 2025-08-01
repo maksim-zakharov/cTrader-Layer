@@ -24,9 +24,9 @@ export class CTraderConnection extends EventEmitter {
         this.#encoderDecoder = new CTraderEncoderDecoder();
         // eslint-disable-next-line max-len
         this.#protobufReader = new CTraderProtobufReader([ {
-            file: path.resolve(__dirname, "../../../protobuf/OpenApiCommonMessages.proto"),
+            file: path.resolve(__dirname, "../../../openapi-proto-messages-main/OpenApiCommonMessages.proto"),
         }, {
-            file: path.resolve(__dirname, "../../../protobuf/OpenApiMessages.proto"),
+            file: path.resolve(__dirname, "../../../openapi-proto-messages-main/OpenApiMessages.proto"),
         }, ]);
         this.#socket = new CTraderSocket({ host, port, });
         this.#resolveConnectionPromise = undefined;

@@ -1,24 +1,25 @@
 {
-    "name": "@reiryoku/ctrader-layer",
-    "version": "1.3.0",
+    "name": "@max89701/ctrader-layer",
+    "version": "1.3.10",
     "description": "A Node.js communication layer for the cTrader Open API.",
     "license": "MIT",
-    "homepage": "https://github.com/Reiryoku-Technologies/cTrader-Layer",
+    "homepage": "https://github.com/maksim-zakharov/cTrader-Layer",
     "bugs": {
-        "url": "https://github.com/Reiryoku-Technologies/cTrader-Layer/issues"
+        "url": "https://github.com/maksim-zakharov/cTrader-Layer/issues"
     },
     "author": {
-        "name": "Vasile Pește / Reiryoku Technologies",
-        "email": "vasile.peste@protonmail.ch"
+        "name": "Maksim Zakharov",
+        "email": "max89701@gmail.com"
     },
     "repository": {
         "type": "git",
-        "url": "https://github.com/Reiryoku-Technologies/cTrader-Layer.git"
+        "url": "https://github.com/maksim-zakharov/cTrader-Layer.git"
     },
     "scripts": {
         "lint": "eslint . --ext .ts,.js",
         "build": "ttsc",
-        "safe-build": "rm -rf ./build && npm run lint && npm run build",
+        "pull-proto": "bash scripts/pull-proto.sh && node scripts/unzip.js",
+        "safe-build": "npm run pull-proto && (if exist \"build\" rmdir /s /q \"build\") && npm run build",
         "prepublishOnly": "npm run safe-build"
     },
     "main": "./build/entry/node/main.js",
@@ -40,9 +41,10 @@
         "@types/uuid": "8.3.0",
         "@typescript-eslint/eslint-plugin": "^4.26.0",
         "@typescript-eslint/parser": "^4.26.0",
+        "adm-zip": "^0.5.16",
         "eslint": "^7.28.0",
-        "ttypescript": "^1.5.12",
-        "typescript": "^4.3.2",
+        "ttypescript": "^1.5.15",
+        "typescript": "^4.4.4",
         "typescript-transform-paths": "^2.2.4"
     }
 }
