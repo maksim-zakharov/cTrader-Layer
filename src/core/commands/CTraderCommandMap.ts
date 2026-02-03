@@ -2,10 +2,16 @@ import { CTraderCommand } from "#commands/CTraderCommand";
 import { CTraderCommandMapParameters } from "#commands/CTraderCommandMapParameters";
 import { GenericObject } from "#utilities/GenericObject";
 
+/**
+ * Карта ожидающих команд по clientMsgId.
+ */
 export class CTraderCommandMap {
     readonly #openCommands: Map<string, CTraderCommand>;
-    readonly #send: (...parameters: any[]) => void;
+    readonly #send: (data: Buffer) => void;
 
+    /**
+     * @param parameters - Параметры (функция отправки сообщений)
+     */
     public constructor ({ send, }: CTraderCommandMapParameters) {
         this.#openCommands = new Map();
         this.#send = send;
@@ -17,7 +23,7 @@ export class CTraderCommandMap {
 
     public create ({ clientMsgId, message, }: {
         clientMsgId: string;
-        message: GenericObject;
+        message: Buffer;
     }): Promise<GenericObject> {
         const command: CTraderCommand = new CTraderCommand({ clientMsgId, });
 
@@ -37,5 +43,17 @@ export class CTraderCommandMap {
         this.#openCommands.delete(clientMsgId);
 
         return command;
+    }
+
+    /**
+     * Отклоняет все ожидающие команды с указанной причиной.
+     * @param reason - Причина отклонения
+     */
+    public rejectAll (reason: Error): void {
+        for (const command of this.#openCommands.values()) {
+            command.reject({ errorCode: "CONNECTION_CLOSED", description: reason.message, });
+        }
+
+        this.#openCommands.clear();
     }
 }

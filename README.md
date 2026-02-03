@@ -1,16 +1,20 @@
 # cTrader Layer
-A Node.js communication layer for the cTrader [Open API](https://connect.spotware.com).<br>
-This implementation is created and maintained by Reiryoku Technologies and its contributors.
 
-## Installation
-```console
+Node.js слой для работы с [cTrader Open API](https://connect.spotware.com).<br>
+Реализация создана и поддерживается Reiryoku Technologies и контрибьюторами.
+
+## Установка
+
+```bash
 npm install @max89701/ctrader-layer
 ```
 
-## Usage
-For the cTrader Open API usage refer to the [Open API Documentation](https://spotware.github.io/open-api-docs/).
+## Использование
 
-### How to establish a connection
+Подробная документация по cTrader Open API: [Open API Documentation](https://spotware.github.io/open-api-docs/).
+
+### Подключение к серверу
+
 ```javascript
 const { CTraderConnection } = require("@max89701/ctrader-layer");
 
@@ -22,49 +26,161 @@ const connection = new CTraderConnection({
 await connection.open();
 ```
 
-### How to send commands
-You can use the `sendCommand` method to send a command with payload to the server.
-The method returns a `Promise` resolved only when a response from the server is received.
-If the response to the command contains an error code then the returned `Promise` is rejected.
+### Отправка команд
+
+Метод `sendCommand` отправляет команду и возвращает `Promise`, который разрешается при получении ответа от сервера. При ошибке (наличие `errorCode` в ответе) `Promise` отклоняется.
 
 ```javascript
-await connection.sendCommand("PayloadName", {
-    foo: "bar",
-});
+const response = await connection.sendCommand("ProtoOAVersionReq", {});
+console.log(response.version);
 ```
 
-### How to authenticate an application
+### Обработка ошибок
+
+```javascript
+try {
+    await connection.sendCommand("ProtoOANewOrderReq", { /* ... */ });
+} catch (error) {
+    // error содержит payload с errorCode и description
+    console.error("Ошибка:", error.errorCode, error.description);
+}
+
+// Без выброса исключения:
+const result = await connection.trySendCommand("ProtoOANewOrderReq", {});
+if (result === undefined) {
+    console.log("Команда не выполнена");
+}
+```
+
+### Аутентификация приложения
+
 ```javascript
 await connection.sendCommand("ProtoOAApplicationAuthReq", {
-    clientId: "foo",
-    clientSecret: "bar",
+    clientId: "your-client-id",
+    clientSecret: "your-client-secret",
 });
 ```
 
-### How to keep connection alive
-You can send a heartbeat message every 25 seconds to keep the connection alive.
+### Аутентификация аккаунта
+
 ```javascript
+await connection.sendCommand("ProtoOAAccountAuthReq", {
+    ctidTraderAccountId: 12345678,
+    accessToken: "your-access-token",
+});
+```
+
+### Поддержание соединения (heartbeat)
+
+Отправляйте heartbeat каждые 25 секунд или используйте встроенный интервал:
+
+```javascript
+// Вручную
 setInterval(() => connection.sendHeartbeat(), 25000);
+
+// Или встроенный интервал
+connection.startHeartbeat(25000);
 ```
 
-### How to listen events from server
+### Подписка на события
+
+События можно подписывать по имени сообщения или по числовому `payloadType`:
+
 ```javascript
-connection.on("EventName", (event) => {
-    console.log(event);
+// По имени события
+connection.on("ProtoOAExecutionEvent", (payload) => {
+    console.log("Исполнение:", payload);
+});
+
+connection.on("ProtoOASpotEvent", (payload) => {
+    console.log("Спот:", payload);
+});
+
+// По числовому payload type (например, 2126 для ProtoOAExecutionEvent)
+connection.on("2126", (payload) => {
+    console.log(payload);
 });
 ```
 
-### How to get the access token profile information
-Through HTTP request.
+### Переподключение и переподписки
+
+При разрыве соединения можно включить автоматическое переподключение с повторной аутентификацией и подписками:
+
 ```javascript
-console.log(await CTraderConnection.getAccessTokenProfile("access-token"));
+const connection = new CTraderConnection({
+    host: "demo.ctraderapi.com",
+    port: 5035,
+    autoReconnect: true,
+    maxReconnectAttempts: 5,
+    reconnectDelayMs: 1000,
+});
+
+// Обработчик для повторной аутентификации и подписок после переподключения
+connection.addReconnectHandler(async (conn) => {
+    await conn.sendCommand("ProtoOAApplicationAuthReq", {
+        clientId: "your-client-id",
+        clientSecret: "your-client-secret",
+    });
+    await conn.sendCommand("ProtoOAAccountAuthReq", {
+        ctidTraderAccountId: 12345678,
+        accessToken: "your-access-token",
+    });
+    await conn.sendCommand("ProtoOASubscribeSpotsReq", {
+        ctidTraderAccountId: 12345678,
+        symbolId: [1, 2, 3],
+    });
+});
+
+connection.on("reconnected", () => {
+    console.log("Переподключение выполнено");
+});
+
+connection.on("reconnectFailed", (err) => {
+    console.error("Не удалось переподключиться:", err);
+});
 ```
 
-### How to get the access token accounts
-Through HTTP request.
+### Закрытие соединения
+
 ```javascript
-console.log(await CTraderConnection.getAccessTokenAccounts("access-token"));
+connection.close();
 ```
+
+### Получение профиля и аккаунтов по access token (HTTP API)
+
+```javascript
+const profile = await CTraderConnection.getAccessTokenProfile("access-token");
+const accounts = await CTraderConnection.getAccessTokenAccounts("access-token");
+```
+
+## События соединения
+
+| Событие | Описание |
+|---------|----------|
+| `open` | Соединение установлено |
+| `close` | Соединение закрыто |
+| `error` | Ошибка (передаётся объект Error) |
+| `reconnecting` | Начата попытка переподключения |
+| `reconnected` | Переподключение успешно |
+| `reconnectFailed` | Исчерпаны попытки переподключения |
+
+## Типы (TypeScript)
+
+```typescript
+import {
+    CTraderConnection,
+    CTraderConnectionParameters,
+    CTraderEventPayload,
+    CTraderEventListener,
+    CTraderReconnectHandler,
+} from "@max89701/ctrader-layer";
+```
+
+## Требования
+
+- Node.js 12+
+- TypeScript 4.4+ (при использовании типов)
 
 ## Contribution
-You can create a PR or open an issue for bug reports or ideas.
+
+Создайте PR или откройте issue для сообщений об ошибках и предложений.

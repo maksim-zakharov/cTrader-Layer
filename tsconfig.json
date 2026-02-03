@@ -10,7 +10,8 @@
         "outDir": "build",
         "paths": {
             "!/*": [ "./*" ],
-            "#*": [ "./src/core/*" ]
+            "#*": [ "./src/core/*" ],
+            "#types/*": [ "./src/core/types/*" ]
         },
         "removeComments": true,
         "sourceMap": true,

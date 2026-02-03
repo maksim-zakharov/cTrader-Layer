@@ -7,20 +7,45 @@ import { CTraderSocket } from "#sockets/CTraderSocket";
 import { GenericObject } from "#utilities/GenericObject";
 import { CTraderProtobufReader } from "#protobuf/CTraderProtobufReader";
 import { CTraderConnectionParameters } from "#CTraderConnectionParameters";
+import { CTraderReconnectHandler } from "#types/CTraderEventTypes";
 import axios from "axios";
 
+/**
+ * Соединение с cTrader Open API.
+ * Поддерживает отправку команд, приём событий, переподключение и переподписки.
+ *
+ * @example
+ * ```ts
+ * const connection = new CTraderConnection({ host: "demo.ctraderapi.com", port: 5035 });
+ * await connection.open();
+ * connection.on("ProtoOAExecutionEvent", (payload) => console.log(payload));
+ * ```
+ */
 export class CTraderConnection extends EventEmitter {
     readonly #commandMap: CTraderCommandMap;
     readonly #encoderDecoder: CTraderEncoderDecoder;
-    readonly #protobufReader;
+    readonly #protobufReader: CTraderProtobufReader;
     readonly #socket: CTraderSocket;
-    #resolveConnectionPromise?: (...parameters: any[]) => void;
-    #rejectConnectionPromise?: (...parameters: any[]) => void;
+    readonly #params: CTraderConnectionParameters;
+    readonly #reconnectHandlers: CTraderReconnectHandler[] = [];
+    #resolveConnectionPromise?: () => void;
+    #rejectConnectionPromise?: (reason?: Error) => void;
+    #reconnectAttempts = 0;
+    #reconnectTimeout?: ReturnType<typeof setTimeout>;
+    #isClosing = false;
+    #heartbeatInterval?: ReturnType<typeof setInterval>;
 
-    public constructor ({ host, port, }: CTraderConnectionParameters) {
+    /**
+     * Создаёт экземпляр соединения.
+     * @param parameters - Параметры подключения (host, port, опции переподключения)
+     */
+    public constructor (parameters: CTraderConnectionParameters) {
         super();
 
-        this.#commandMap = new CTraderCommandMap({ send: (data: any): void => this.#send(data), });
+        const { host, port, } = parameters;
+
+        this.#params = parameters;
+        this.#commandMap = new CTraderCommandMap({ send: (data: Buffer): void => this.#send(data), });
         this.#encoderDecoder = new CTraderEncoderDecoder();
         // eslint-disable-next-line max-len
         this.#protobufReader = new CTraderProtobufReader([ {
@@ -37,22 +62,41 @@ export class CTraderConnection extends EventEmitter {
         this.#protobufReader.build();
 
         this.#socket.onOpen = (): void => this.#onOpen();
-        this.#socket.onData = (data: any): void => this.#onData(data);
+        this.#socket.onData = (data: Buffer): void => this.#onData(data);
         this.#socket.onClose = (): void => this.#onClose();
+        this.#socket.onError = (err: Error): void => this.#onError(err);
     }
 
+    /**
+     * Возвращает числовой payload type по имени сообщения.
+     * @param name - Имя сообщения (например, "ProtoOAExecutionEvent")
+     * @returns Числовой идентификатор типа
+     */
     public getPayloadTypeByName (name: string): number {
         return this.#protobufReader.getPayloadTypeByName(name);
     }
 
+    /**
+     * Отправляет команду на сервер и ожидает ответ.
+     * @param payloadType - Имя или числовой идентификатор типа сообщения
+     * @param data - Данные команды
+     * @returns Promise с ответом сервера
+     * @throws Отклоняется при ошибке от сервера (errorCode в ответе)
+     */
     async sendCommand (payloadType: string | number, data?: GenericObject): Promise<GenericObject> {
         const clientMsgId: string = v1();
         const normalizedPayloadType: number = typeof payloadType === "number" ? payloadType : this.getPayloadTypeByName(payloadType);
-        const message: any = this.#protobufReader.encode(normalizedPayloadType, data ?? {}, clientMsgId);
+        const message: Buffer = this.#protobufReader.encode(normalizedPayloadType, data ?? {}, clientMsgId) as Buffer;
 
         return this.#commandMap.create({ clientMsgId, message, });
     }
 
+    /**
+     * Отправляет команду без выброса исключения при ошибке.
+     * @param payloadType - Имя или числовой идентификатор типа
+     * @param data - Данные команды
+     * @returns Promise с ответом или undefined при ошибке
+     */
     async trySendCommand (payloadType: string | number, data?: GenericObject): Promise<GenericObject | undefined> {
         try {
             return await this.sendCommand(payloadType, data);
@@ -62,12 +106,22 @@ export class CTraderConnection extends EventEmitter {
         }
     }
 
+    /**
+     * Отправляет heartbeat для поддержания соединения.
+     * Рекомендуется вызывать каждые 25 секунд.
+     */
     public sendHeartbeat (): void {
-        this.sendCommand("ProtoHeartbeatEvent");
+        void this.sendCommand("ProtoHeartbeatEvent");
     }
 
-    public open (): Promise<unknown> {
-        const connectionPromise = new Promise((resolve, reject) => {
+    /**
+     * Открывает соединение с сервером.
+     * @returns Promise, разрешаемый при успешном подключении
+     */
+    public open (): Promise<void> {
+        this.#isClosing = false;
+
+        const connectionPromise = new Promise<void>((resolve, reject) => {
             this.#resolveConnectionPromise = resolve;
             this.#rejectConnectionPromise = reject;
         });
@@ -77,23 +131,82 @@ export class CTraderConnection extends EventEmitter {
         return connectionPromise;
     }
 
-    public override on (type: string, listener: (...parameters: any) => any): this {
+    /**
+     * Закрывает соединение.
+     * Отклоняет все ожидающие команды.
+     */
+    public close (): void {
+        this.#isClosing = true;
+        this.#clearReconnectTimeout();
+        this.#stopHeartbeat();
+        this.#commandMap.rejectAll(new Error("Соединение закрыто"));
+        this.#socket.close();
+        this.emit("close");
+    }
+
+    /**
+     * Подписывается на событие от сервера.
+     * @param type - Имя события (например, "ProtoOAExecutionEvent") или числовой payload type
+     * @param listener - Обработчик события
+     * @returns this для цепочки вызовов
+     */
+    public override on (type: string, listener: (payload: GenericObject) => void): this {
         const normalizedType: string = Number.isFinite(Number.parseInt(type, 10)) ? type : this.getPayloadTypeByName(type).toString();
 
         return super.on(normalizedType, listener);
     }
 
-    #send (data: GenericObject): void {
+    /**
+     * Добавляет обработчик переподключения.
+     * Вызывается после успешного переподключения для повторной аутентификации и подписок.
+     * @param handler - Асинхронная функция, выполняющая повторную аутентификацию и подписки
+     */
+    public addReconnectHandler (handler: CTraderReconnectHandler): void {
+        this.#reconnectHandlers.push(handler);
+    }
+
+    /**
+     * Удаляет обработчик переподключения.
+     * @param handler - Обработчик для удаления
+     */
+    public removeReconnectHandler (handler: CTraderReconnectHandler): void {
+        const index = this.#reconnectHandlers.indexOf(handler);
+
+        if (index !== -1) {
+            this.#reconnectHandlers.splice(index, 1);
+        }
+    }
+
+    /**
+     * Запускает периодическую отправку heartbeat.
+     * @param intervalMs - Интервал в миллисекундах (по умолчанию 25000)
+     */
+    public startHeartbeat (intervalMs = 25000): void {
+        this.#stopHeartbeat();
+        this.#heartbeatInterval = setInterval(() => this.sendHeartbeat(), intervalMs);
+    }
+
+    /**
+     * Останавливает периодическую отправку heartbeat.
+     */
+    public stopHeartbeat (): void {
+        this.#stopHeartbeat();
+    }
+
+    #send (data: Buffer): void {
         this.#socket.send(this.#encoderDecoder.encode(data));
     }
 
     #onOpen (): void {
+        this.#reconnectAttempts = 0;
+
         if (this.#resolveConnectionPromise) {
             this.#resolveConnectionPromise();
         }
 
         this.#resolveConnectionPromise = undefined;
         this.#rejectConnectionPromise = undefined;
+        this.emit("open");
     }
 
     #onData (data: Buffer): void {
@@ -120,24 +233,107 @@ export class CTraderConnection extends EventEmitter {
     }
 
     #onClose (): void {
-        // Silence is golden.
+        this.#socket.close();
+
+        if (this.#rejectConnectionPromise) {
+            this.#rejectConnectionPromise(new Error("Соединение закрыто"));
+        }
+
+        this.#resolveConnectionPromise = undefined;
+        this.#rejectConnectionPromise = undefined;
+        this.#commandMap.rejectAll(new Error("Соединение разорвано"));
+
+        if (!this.#isClosing && this.#params.autoReconnect) {
+            this.#scheduleReconnect();
+        }
+        else {
+            this.emit("close");
+        }
+    }
+
+    #onError (err: Error): void {
+        this.emit("error", err);
+
+        if (this.#rejectConnectionPromise) {
+            this.#rejectConnectionPromise(err);
+        }
     }
 
     #onPushEvent (payloadType: number, message: GenericObject): void {
         this.emit(payloadType.toString(), message);
     }
 
-    public static async getAccessTokenProfile (accessToken: string): Promise<GenericObject> {
-        return JSON.parse(await axios.get(`https://api.spotware.com/connect/profile?access_token=${accessToken}`));
+    #scheduleReconnect (): void {
+        const maxAttempts = this.#params.maxReconnectAttempts ?? 5;
+        const delayMs = this.#params.reconnectDelayMs ?? 1000;
+
+        if (this.#reconnectAttempts >= maxAttempts) {
+            this.emit("reconnectFailed", new Error(`Не удалось переподключиться после ${maxAttempts} попыток`));
+
+            return;
+        }
+
+        this.#reconnectAttempts += 1;
+        const backoffDelay = delayMs * Math.pow(2, this.#reconnectAttempts - 1);
+
+        this.emit("reconnecting", { attempt: this.#reconnectAttempts, maxAttempts, delayMs: backoffDelay, });
+
+        this.#reconnectTimeout = setTimeout(async () => {
+            try {
+                await this.open();
+                await this.#runReconnectHandlers();
+                this.emit("reconnected");
+            }
+            catch (err) {
+                this.#scheduleReconnect();
+            }
+        }, backoffDelay);
     }
 
-    public static async getAccessTokenAccounts (accessToken: string): Promise<GenericObject[]> {
-        const parsedResponse: any = JSON.parse(await axios.get(`https://api.spotware.com/connect/tradingaccounts?access_token=${accessToken}`));
+    async #runReconnectHandlers (): Promise<void> {
+        for (const handler of this.#reconnectHandlers) {
+            await handler(this);
+        }
+    }
 
-        if (!Array.isArray(parsedResponse)) {
+    #clearReconnectTimeout (): void {
+        if (this.#reconnectTimeout) {
+            clearTimeout(this.#reconnectTimeout);
+            this.#reconnectTimeout = undefined;
+        }
+    }
+
+    #stopHeartbeat (): void {
+        if (this.#heartbeatInterval) {
+            clearInterval(this.#heartbeatInterval);
+            this.#heartbeatInterval = undefined;
+        }
+    }
+
+    /**
+     * Получает профиль по access token через HTTP API Spotware.
+     * @param accessToken - Токен доступа
+     * @returns Данные профиля
+     */
+    public static async getAccessTokenProfile (accessToken: string): Promise<GenericObject> {
+        const response = await axios.get(`https://api.spotware.com/connect/profile?access_token=${accessToken}`);
+
+        return response.data as GenericObject;
+    }
+
+    /**
+     * Получает список аккаунтов по access token через HTTP API Spotware.
+     * @param accessToken - Токен доступа
+     * @returns Массив аккаунтов
+     */
+    public static async getAccessTokenAccounts (accessToken: string): Promise<GenericObject[]> {
+        const response = await axios.get(`https://api.spotware.com/connect/tradingaccounts?access_token=${accessToken}`);
+        const data = response.data;
+
+        if (!Array.isArray(data)) {
             return [];
         }
 
-        return parsedResponse;
+        return data as GenericObject[];
     }
 }
