@@ -44,4 +44,16 @@ export class CTraderCommandMap {
 
         return command;
     }
+
+    /**
+     * Отклоняет все ожидающие команды с указанной причиной.
+     * @param errorPayload - Payload с ошибкой для передачи в reject
+     */
+    public rejectAll (errorPayload: GenericObject): void {
+        for (const command of this.#openCommands.values()) {
+            command.reject(errorPayload);
+        }
+
+        this.#openCommands.clear();
+    }
 }

@@ -6,27 +6,35 @@ import { CTraderEncoderDecoder } from "#encoder-decoder/CTraderEncoderDecoder";
 import { CTraderSocket } from "#sockets/CTraderSocket";
 import { GenericObject } from "#utilities/GenericObject";
 import { CTraderProtobufReader } from "#protobuf/CTraderProtobufReader";
-import { CTraderConnectionParameters } from "#CTraderConnectionParameters";
+import { CTraderConnectionParameters, CTraderReconnectHandler } from "#CTraderConnectionParameters";
 import axios from "axios";
 
 /**
  * Соединение с cTrader Open API.
- * Поддерживает отправку команд и приём событий от сервера.
+ * Поддерживает отправку команд, приём событий от сервера, переподключение и переподписки.
  */
 export class CTraderConnection extends EventEmitter {
     readonly #commandMap: CTraderCommandMap;
     readonly #encoderDecoder: CTraderEncoderDecoder;
     readonly #protobufReader;
     readonly #socket: CTraderSocket;
-    #resolveConnectionPromise?: (...parameters: any[]) => void;
-    #rejectConnectionPromise?: (...parameters: any[]) => void;
+    readonly #params: CTraderConnectionParameters;
+    readonly #reconnectHandlers: CTraderReconnectHandler[] = [];
+    #resolveConnectionPromise?: () => void;
+    #rejectConnectionPromise?: (reason?: Error) => void;
+    #reconnectAttempts = 0;
+    #reconnectTimeout?: ReturnType<typeof setTimeout>;
+    #isClosing = false;
 
     /**
-     * @param parameters - Параметры подключения (host, port)
+     * @param parameters - Параметры подключения (host, port, опции переподключения)
      */
-    public constructor ({ host, port, }: CTraderConnectionParameters) {
+    public constructor (parameters: CTraderConnectionParameters) {
         super();
 
+        const { host, port, } = parameters;
+
+        this.#params = parameters;
         this.#commandMap = new CTraderCommandMap({ send: (data: any): void => this.#send(data), });
         this.#encoderDecoder = new CTraderEncoderDecoder();
         // eslint-disable-next-line max-len
@@ -46,6 +54,7 @@ export class CTraderConnection extends EventEmitter {
         this.#socket.onOpen = (): void => this.#onOpen();
         this.#socket.onData = (data: any): void => this.#onData(data);
         this.#socket.onClose = (): void => this.#onClose();
+        this.#socket.onError = (err: Error): void => this.#onError(err);
     }
 
     /**
@@ -100,14 +109,49 @@ export class CTraderConnection extends EventEmitter {
      * @returns Promise, разрешаемый при успешном подключении
      */
     public open (): Promise<unknown> {
+        this.#isClosing = false;
+
         const connectionPromise = new Promise((resolve, reject) => {
-            this.#resolveConnectionPromise = resolve;
+            this.#resolveConnectionPromise = resolve as () => void;
             this.#rejectConnectionPromise = reject;
         });
 
         this.#socket.connect();
 
         return connectionPromise;
+    }
+
+    /**
+     * Закрывает соединение.
+     * Отклоняет все ожидающие команды.
+     */
+    public close (): void {
+        this.#isClosing = true;
+        this.#clearReconnectTimeout();
+        this.#commandMap.rejectAll({ errorCode: "CONNECTION_CLOSED", description: "Соединение закрыто", });
+        this.#socket.close();
+        this.emit("close");
+    }
+
+    /**
+     * Добавляет обработчик переподключения.
+     * Вызывается после успешного переподключения для повторной аутентификации и подписок.
+     * @param handler - Асинхронная функция, выполняющая повторную аутентификацию и подписки
+     */
+    public addReconnectHandler (handler: CTraderReconnectHandler): void {
+        this.#reconnectHandlers.push(handler);
+    }
+
+    /**
+     * Удаляет обработчик переподключения.
+     * @param handler - Обработчик для удаления
+     */
+    public removeReconnectHandler (handler: CTraderReconnectHandler): void {
+        const index = this.#reconnectHandlers.indexOf(handler);
+
+        if (index !== -1) {
+            this.#reconnectHandlers.splice(index, 1);
+        }
     }
 
     /**
@@ -127,12 +171,15 @@ export class CTraderConnection extends EventEmitter {
     }
 
     #onOpen (): void {
+        this.#reconnectAttempts = 0;
+
         if (this.#resolveConnectionPromise) {
             this.#resolveConnectionPromise();
         }
 
         this.#resolveConnectionPromise = undefined;
         this.#rejectConnectionPromise = undefined;
+        this.emit("open");
     }
 
     #onData (data: Buffer): void {
@@ -159,7 +206,70 @@ export class CTraderConnection extends EventEmitter {
     }
 
     #onClose (): void {
-        // Silence is golden.
+        this.#socket.close();
+
+        if (this.#rejectConnectionPromise) {
+            this.#rejectConnectionPromise(new Error("Соединение закрыто"));
+        }
+
+        this.#resolveConnectionPromise = undefined;
+        this.#rejectConnectionPromise = undefined;
+        this.#commandMap.rejectAll({ errorCode: "CONNECTION_CLOSED", description: "Соединение разорвано", });
+
+        if (!this.#isClosing && this.#params.autoReconnect) {
+            this.#scheduleReconnect();
+        }
+        else {
+            this.emit("close");
+        }
+    }
+
+    #onError (err: Error): void {
+        this.emit("error", err);
+
+        if (this.#rejectConnectionPromise) {
+            this.#rejectConnectionPromise(err);
+        }
+    }
+
+    #scheduleReconnect (): void {
+        const maxAttempts = this.#params.maxReconnectAttempts ?? 5;
+        const delayMs = this.#params.reconnectDelayMs ?? 1000;
+
+        if (this.#reconnectAttempts >= maxAttempts) {
+            this.emit("reconnectFailed", new Error(`Не удалось переподключиться после ${maxAttempts} попыток`));
+
+            return;
+        }
+
+        this.#reconnectAttempts += 1;
+        const backoffDelay = delayMs * Math.pow(2, this.#reconnectAttempts - 1);
+
+        this.emit("reconnecting", { attempt: this.#reconnectAttempts, maxAttempts, delayMs: backoffDelay, });
+
+        this.#reconnectTimeout = setTimeout(async () => {
+            try {
+                await this.open();
+                await this.#runReconnectHandlers();
+                this.emit("reconnected");
+            }
+            catch {
+                this.#scheduleReconnect();
+            }
+        }, backoffDelay);
+    }
+
+    async #runReconnectHandlers (): Promise<void> {
+        for (const handler of this.#reconnectHandlers) {
+            await handler(this);
+        }
+    }
+
+    #clearReconnectTimeout (): void {
+        if (this.#reconnectTimeout) {
+            clearTimeout(this.#reconnectTimeout);
+            this.#reconnectTimeout = undefined;
+        }
     }
 
     #onPushEvent (payloadType: number, message: GenericObject): void {

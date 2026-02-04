@@ -28,15 +28,28 @@ export class CTraderSocket {
         return this.#port;
     }
 
+    /**
+     * Устанавливает соединение с сервером.
+     */
     public connect (): void {
         // @ts-ignore
-        const socket = tls.connect(this.#port, this.#host, this.onOpen);
+        const socket = tls.connect(this.#port, this.#host, (): void => this.onOpen());
 
-        socket.on("data", this.onData);
-        socket.on("end", this.onClose);
-        socket.on("error", this.onError);
+        socket.on("data", (data: Buffer): void => this.onData(data));
+        socket.on("end", (): void => this.onClose());
+        socket.on("error", (err: Error): void => this.onError(err));
 
         this.#socket = socket;
+    }
+
+    /**
+     * Закрывает соединение.
+     */
+    public close (): void {
+        if (this.#socket) {
+            this.#socket.destroy();
+            this.#socket = undefined;
+        }
     }
 
     /**
@@ -51,7 +64,7 @@ export class CTraderSocket {
         // Silence is golden.
     }
 
-    public onData (...parameters: any[]): void {
+    public onData (_data: Buffer): void {
         // Silence is golden.
     }
 
@@ -59,7 +72,7 @@ export class CTraderSocket {
         // Silence is golden.
     }
 
-    public onError (): void {
+    public onError (_err: Error): void {
         // Silence is golden.
     }
 }

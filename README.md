@@ -78,6 +78,52 @@ await connection.sendCommand("ProtoOAAccountAuthReq", {
 setInterval(() => connection.sendHeartbeat(), 25000);
 ```
 
+### Переподключение и переподписки
+
+При разрыве соединения можно включить автоматическое переподключение с повторной аутентификацией и подписками:
+
+```javascript
+const { CTraderConnection } = require("@max89701/ctrader-layer");
+
+const connection = new CTraderConnection({
+    host: "demo.ctraderapi.com",
+    port: 5035,
+    autoReconnect: true,
+    maxReconnectAttempts: 5,
+    reconnectDelayMs: 1000,
+});
+
+// Обработчик для повторной аутентификации и подписок после переподключения
+connection.addReconnectHandler(async (conn) => {
+    await conn.sendCommand("ProtoOAApplicationAuthReq", {
+        clientId: "your-client-id",
+        clientSecret: "your-client-secret",
+    });
+    await conn.sendCommand("ProtoOAAccountAuthReq", {
+        ctidTraderAccountId: 12345678,
+        accessToken: "your-access-token",
+    });
+    await conn.sendCommand("ProtoOASubscribeSpotsReq", {
+        ctidTraderAccountId: 12345678,
+        symbolId: [1, 2, 3],
+    });
+});
+
+connection.on("reconnected", () => {
+    console.log("Переподключение выполнено");
+});
+
+connection.on("reconnectFailed", (err) => {
+    console.error("Не удалось переподключиться:", err);
+});
+```
+
+### Закрытие соединения
+
+```javascript
+connection.close();
+```
+
 ### Подписка на события
 
 События можно подписывать по имени сообщения или по числовому `payloadType`:
@@ -104,6 +150,17 @@ connection.on("2126", (payload) => {
 const profile = await CTraderConnection.getAccessTokenProfile("access-token");
 const accounts = await CTraderConnection.getAccessTokenAccounts("access-token");
 ```
+
+## События соединения
+
+| Событие | Описание |
+|---------|----------|
+| `open` | Соединение установлено |
+| `close` | Соединение закрыто |
+| `error` | Ошибка (передаётся объект Error) |
+| `reconnecting` | Начата попытка переподключения |
+| `reconnected` | Переподключение успешно |
+| `reconnectFailed` | Исчерпаны попытки переподключения |
 
 ## Требования
 

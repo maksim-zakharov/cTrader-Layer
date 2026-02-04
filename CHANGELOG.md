@@ -1,3 +1,13 @@
+1.4.2 - 03-02-2025
+===================
+* Реализовано автоматическое переподключение при разрыве соединения (autoReconnect, maxReconnectAttempts, reconnectDelayMs).
+* Добавлены обработчики переподключения addReconnectHandler/removeReconnectHandler для повторной аутентификации и подписок.
+* Добавлены события: open, close, error, reconnecting, reconnected, reconnectFailed.
+* Добавлен метод close() для закрытия соединения.
+* Добавлен метод rejectAll в CTraderCommandMap для отклонения ожидающих команд при закрытии.
+* Добавлен метод close() в CTraderSocket.
+* Исправлена передача колбэков в tls.connect (стрелочные функции для сохранения контекста).
+
 1.4.1 - 03-02-2025
 ===================
 * Добавлен JSDoc ко всем публичным методам и классам.
