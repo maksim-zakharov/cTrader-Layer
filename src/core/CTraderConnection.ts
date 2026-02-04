@@ -282,7 +282,9 @@ export class CTraderConnection extends EventEmitter {
      * @returns Данные профиля
      */
     public static async getAccessTokenProfile (accessToken: string): Promise<GenericObject> {
-        return JSON.parse(await axios.get(`https://api.spotware.com/connect/profile?access_token=${accessToken}`));
+        const response = await axios.get(`https://api.spotware.com/connect/profile?access_token=${accessToken}`);
+
+        return response.data as GenericObject;
     }
 
     /**
@@ -291,12 +293,13 @@ export class CTraderConnection extends EventEmitter {
      * @returns Массив аккаунтов
      */
     public static async getAccessTokenAccounts (accessToken: string): Promise<GenericObject[]> {
-        const parsedResponse: any = JSON.parse(await axios.get(`https://api.spotware.com/connect/tradingaccounts?access_token=${accessToken}`));
+        const response = await axios.get(`https://api.spotware.com/connect/tradingaccounts?access_token=${accessToken}`);
+        const data = response.data;
 
-        if (!Array.isArray(parsedResponse)) {
+        if (!Array.isArray(data)) {
             return [];
         }
 
-        return parsedResponse;
+        return data as GenericObject[];
     }
 }

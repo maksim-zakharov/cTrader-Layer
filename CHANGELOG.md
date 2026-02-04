@@ -1,3 +1,8 @@
+1.4.3 - 03-02-2025
+===================
+* Обновлён axios с 0.21.1 до ^1.6.0 (исправление уязвимостей).
+* Исправлена работа getAccessTokenProfile и getAccessTokenAccounts: использование response.data вместо JSON.parse.
+
 1.4.2 - 03-02-2025
 ===================
 * Реализовано автоматическое переподключение при разрыве соединения (autoReconnect, maxReconnectAttempts, reconnectDelayMs).

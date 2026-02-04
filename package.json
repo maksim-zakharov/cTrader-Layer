@@ -1,6 +1,6 @@
 {
     "name": "@max89701/ctrader-layer",
-    "version": "1.4.2",
+    "version": "1.4.3",
     "description": "A Node.js communication layer for the cTrader Open API.",
     "license": "MIT",
     "homepage": "https://github.com/maksim-zakharov/cTrader-Layer",
@@ -31,7 +31,7 @@
         "src"
     ],
     "dependencies": {
-        "axios": "0.21.1",
+        "axios": "^1.6.0",
         "protobufjs": "5.0.1",
         "uuid": "8.3.2"
     },
