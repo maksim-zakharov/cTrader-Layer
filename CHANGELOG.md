@@ -1,3 +1,15 @@
+1.4.6 - 03-02-2025
+===================
+* Добавлен CTraderEventMap — маппинг имён событий на типы payload.
+* Тип payload в on() выводится автоматически по имени события (без generic-параметра).
+* Добавлены интерфейсы payload для событий: ProtoOASpotEvent, ProtoOAExecutionEvent и др.
+* Поддержка module augmentation для расширения CTraderEventMap.
+
+1.4.5 - 03-02-2025
+===================
+* Метод on() теперь поддерживает generic-параметр для типизации payload.
+* Пример: connection.on&lt;ProtoOASpotEvent&gt;("ProtoOASpotEvent", (payload) => ...) — payload типизирован без приведения типов.
+
 1.4.4 - 03-02-2025
 ===================
 * Добавлены типы: CTraderPayload, CTraderDecodedMessage, CTraderEncodable, CTraderEventListener.

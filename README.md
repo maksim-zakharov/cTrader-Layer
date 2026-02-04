@@ -126,22 +126,37 @@ connection.close();
 
 ### Подписка на события
 
-События можно подписывать по имени сообщения или по числовому `payloadType`:
+События можно подписывать по имени сообщения или по числовому `payloadType`.
+Тип payload выводится автоматически по имени события из маппинга `CTraderEventMap`:
 
-```javascript
-// По имени события
-connection.on("ProtoOAExecutionEvent", (payload) => {
-    console.log("Исполнение:", payload);
+```typescript
+import { CTraderConnection } from "@max89701/ctrader-layer";
+
+// Тип payload выводится автоматически — ProtoOASpotEventPayload
+connection.on("ProtoOASpotEvent", (payload) => {
+    // payload.ctidTraderAccountId, payload.symbolId, payload.bid, payload.ask — типизированы
+    console.log("Спот:", payload.bid, payload.ask);
 });
 
-connection.on("ProtoOASpotEvent", (payload) => {
+connection.on("ProtoOAExecutionEvent", (payload) => {
+    // payload.executionType, payload.errorCode и т.д.
+    console.log("Исполнение:", payload.executionType);
+});
+
+// По числовому payload type — payload: CTraderPayload
+connection.on("2131", (payload) => {
     console.log("Спот:", payload);
 });
+```
 
-// По числовому payload type (например, 2126 для ProtoOAExecutionEvent)
-connection.on("2126", (payload) => {
-    console.log(payload);
-});
+Для расширения маппинга используйте module augmentation:
+
+```typescript
+declare module "@max89701/ctrader-layer" {
+    interface CTraderEventMap {
+        MyCustomEvent: { customField: string };
+    }
+}
 ```
 
 ### Получение профиля и аккаунтов по access token (HTTP API)

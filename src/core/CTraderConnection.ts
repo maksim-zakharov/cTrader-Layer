@@ -6,7 +6,7 @@ import { CTraderEncoderDecoder } from "#encoder-decoder/CTraderEncoderDecoder";
 import { CTraderSocket } from "#sockets/CTraderSocket";
 import { GenericObject } from "#utilities/GenericObject";
 import { CTraderProtobufReader } from "#protobuf/CTraderProtobufReader";
-import type { CTraderDecodedMessage, CTraderEncodable, CTraderPayload } from "#types";
+import type { CTraderDecodedMessage, CTraderEncodable, CTraderEventMap, CTraderPayload } from "#types";
 import { CTraderConnectionParameters, CTraderReconnectHandler } from "#CTraderConnectionParameters";
 import axios from "axios";
 
@@ -157,10 +157,14 @@ export class CTraderConnection extends EventEmitter {
 
     /**
      * Подписывается на событие от сервера.
-     * @param type - Имя события (например, "ProtoOAExecutionEvent") или числовой payload type
+     * Тип payload выводится автоматически по имени события из CTraderEventMap.
+     * Для неизвестных событий используется CTraderPayload.
+     * @param type - Имя события (например, "ProtoOASpotEvent") или числовой payload type
      * @param listener - Обработчик события
      * @returns this для цепочки вызовов
      */
+    public override on<K extends keyof CTraderEventMap> (type: K, listener: (payload: CTraderEventMap[K]) => void): this;
+    public override on (type: string, listener: (payload: CTraderPayload) => void): this;
     public override on (type: string, listener: (payload: CTraderPayload) => void): this {
         const normalizedType: string = Number.isFinite(Number.parseInt(type, 10)) ? type : this.getPayloadTypeByName(type).toString();
 

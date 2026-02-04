@@ -1,3 +1,17 @@
+export type { CTraderEventMap } from "./events";
+export type {
+    ProtoOASpotEventPayload,
+    ProtoOAExecutionEventPayload,
+    ProtoOAClientDisconnectEventPayload,
+    ProtoOAAccountsTokenInvalidatedEventPayload,
+    ProtoOATrailingSLChangedEventPayload,
+    ProtoOASymbolChangedEventPayload,
+    ProtoOATraderUpdatedEventPayload,
+    ProtoOAOrderErrorEventPayload,
+    ProtoOAMarginChangedEventPayload,
+    ProtoHeartbeatEventPayload,
+} from "./events";
+
 /**
  * Payload команд и событий cTrader.
  * Структура зависит от типа сообщения.
