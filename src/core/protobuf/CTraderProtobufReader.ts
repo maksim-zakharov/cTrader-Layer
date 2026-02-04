@@ -1,21 +1,58 @@
+import type { CTraderDecodedMessage, CTraderPayload } from "#types";
 import { GenericObject } from "#utilities/GenericObject";
 
 const protobuf = require("protobufjs");
+
+/** Опции для загрузки proto-файлов */
+interface ProtoFileOption {
+    file: string;
+}
+
+/** Внутренняя структура protobuf builder (типы из библиотеки protobufjs) */
+interface ProtobufBuilder {
+    build: (name?: string) => unknown;
+    ns: { children: ProtobufReflect[] };
+}
+
+interface ProtobufReflect {
+    className: string;
+    name: string;
+    children?: ProtobufReflect[];
+    defaultValue?: number;
+}
+
+interface PayloadTypeEntry {
+    messageBuilded: ProtobufMessageClass;
+    name: string;
+}
+
+interface NameEntry {
+    messageBuilded: ProtobufMessageClass;
+    payloadType?: number;
+}
+
+interface ProtobufMessageClass {
+    new (params: GenericObject): ProtobufMessageInstance;
+    decode: (buffer: Buffer | Uint8Array) => GenericObject;
+}
+
+interface ProtobufMessageInstance {
+    encode: () => Buffer;
+    toBuffer: () => Buffer;
+}
 
 /**
  * Читатель и кодировщик protobuf-сообщений cTrader Open API.
  */
 export class CTraderProtobufReader {
-    #params: any;
-    #builder: any;
-    readonly #payloadTypes: {
-        [key: string]: any;
-    };
-    readonly #names: any;
-    readonly #messages: any;
-    readonly #enums: any;
+    #params: ProtoFileOption[];
+    #builder: ProtobufBuilder | undefined;
+    readonly #payloadTypes: Record<number, PayloadTypeEntry> = {};
+    readonly #names: Record<string, NameEntry> = {};
+    readonly #messages: Record<string, ProtobufMessageClass> = {};
+    readonly #enums: Record<string, unknown> = {};
 
-    public constructor (options: GenericObject) {
+    public constructor (options: ProtoFileOption[]) {
         this.#params = options;
         this.#builder = undefined;
         this.#payloadTypes = {};
@@ -30,49 +67,50 @@ export class CTraderProtobufReader {
      * @param params - Параметры сообщения
      * @param clientMsgId - Идентификатор сообщения клиента
      */
-    public encode (payloadType: number, params: GenericObject, clientMsgId: string): any {
+    public encode (payloadType: number, params: GenericObject, clientMsgId: string): Buffer {
         const Message = this.getMessageByPayloadType(payloadType);
         const message = new Message(params);
 
         return this.#wrap(payloadType, message, clientMsgId).encode();
     }
 
-    public decode (buffer: GenericObject): any {
-        const protoMessage = this.getMessageByName("ProtoMessage").decode(buffer);
-        const payloadType = protoMessage.payloadType;
+    public decode (buffer: Buffer | Uint8Array): CTraderDecodedMessage {
+        const ProtoMessage = this.getMessageByName("ProtoMessage");
+        const protoMessage = ProtoMessage.decode(buffer) as { payloadType: number; payload: Buffer | Uint8Array; clientMsgId: string };
+        const { payloadType, payload, clientMsgId, } = protoMessage;
 
         return {
-            payload: this.getMessageByPayloadType(payloadType).decode(protoMessage.payload),
-            payloadType: payloadType,
-            clientMsgId: protoMessage.clientMsgId,
+            payload: this.getMessageByPayloadType(payloadType).decode(payload) as CTraderPayload,
+            payloadType,
+            clientMsgId,
         };
     }
 
-    #wrap (payloadType: number, message: GenericObject, clientMsgId: string): any {
+    #wrap (payloadType: number, message: ProtobufMessageInstance, clientMsgId: string): ProtobufMessageInstance {
         const ProtoMessage = this.getMessageByName("ProtoMessage");
 
         return new ProtoMessage({
             payloadType: payloadType,
             payload: message.toBuffer(),
             clientMsgId: clientMsgId,
-        });
+        }) as ProtobufMessageInstance;
     }
 
     public load (): void {
-        this.#params.forEach((param: any) => {
-            this.#builder = protobuf.loadProtoFile(param.file, this.#builder);
+        this.#params.forEach((param: ProtoFileOption) => {
+            this.#builder = protobuf.loadProtoFile(param.file, this.#builder) as ProtobufBuilder;
         });
     }
 
-    public build (): any {
-        const builder: any = this.#builder;
+    public build (): void {
+        const builder = this.#builder as ProtobufBuilder;
 
         builder.build();
 
-        const messages: any[] = [];
-        const enums: any[] = [];
+        const messages: ProtobufReflect[] = [];
+        const enums: ProtobufReflect[] = [];
 
-        builder.ns.children.forEach((reflect: any) => {
+        builder.ns.children.forEach((reflect: ProtobufReflect) => {
             const className: string = reflect.className;
 
             if (className === "Message") {
@@ -85,15 +123,19 @@ export class CTraderProtobufReader {
 
         messages.filter((message) => typeof this.findPayloadType(message) === "number").forEach((message) => {
             const name: string = message.name;
-            const messageBuilded: any = builder.build(name);
+            const messageBuilded = builder.build(name) as ProtobufMessageClass;
 
             this.#messages[name] = messageBuilded;
 
             const payloadType = this.findPayloadType(message);
 
+            if (typeof payloadType !== "number") {
+                return;
+            }
+
             this.#names[name] = {
                 messageBuilded: messageBuilded,
-                payloadType: payloadType,
+                payloadType,
             };
             this.#payloadTypes[payloadType] = {
                 messageBuilded: messageBuilded,
@@ -101,7 +143,7 @@ export class CTraderProtobufReader {
             };
         });
 
-        enums.forEach((enume: any) => {
+        enums.forEach((enume: ProtobufReflect) => {
             const name: string = enume.name;
 
             this.#enums[name] = builder.build(name);
@@ -111,8 +153,9 @@ export class CTraderProtobufReader {
     }
 
     #buildWrapper (): void {
+        const builder = this.#builder as ProtobufBuilder;
         const name = "ProtoMessage";
-        const messageBuilded = this.#builder.build(name);
+        const messageBuilded = builder.build(name) as ProtobufMessageClass;
 
         this.#messages[name] = messageBuilded;
         this.#names[name] = {
@@ -121,10 +164,10 @@ export class CTraderProtobufReader {
         };
     }
 
-    public findPayloadType (message: GenericObject): any {
-        const field = message.children.find((field: any) => field.name === "payloadType");
+    public findPayloadType (message: ProtobufReflect): number | undefined {
+        const field = message.children?.find((f: ProtobufReflect) => f.name === "payloadType");
 
-        if (!field) {
+        if (!field || typeof field.defaultValue !== "number") {
             return undefined;
         }
 
@@ -135,11 +178,11 @@ export class CTraderProtobufReader {
      * Возвращает класс сообщения по payload type.
      * @param payloadType - Числовой тип payload
      */
-    public getMessageByPayloadType (payloadType: number): any {
+    public getMessageByPayloadType (payloadType: number): ProtobufMessageClass {
         return this.#payloadTypes[payloadType].messageBuilded;
     }
 
-    public getMessageByName (name: string): any {
+    public getMessageByName (name: string): ProtobufMessageClass {
         return this.#names[name].messageBuilded;
     }
 
@@ -148,6 +191,12 @@ export class CTraderProtobufReader {
      * @param name - Имя сообщения
      */
     public getPayloadTypeByName (name: string): number {
-        return this.#names[name].payloadType;
+        const payloadType = this.#names[name]?.payloadType;
+
+        if (typeof payloadType !== "number") {
+            throw new Error(`Unknown message name: ${name}`);
+        }
+
+        return payloadType;
     }
 }

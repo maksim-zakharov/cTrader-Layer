@@ -1,8 +1,10 @@
+import type { CTraderPayload } from "#types";
+
 /**
  * Обработчик переподключения.
  * Вызывается после успешного переподключения для повторной аутентификации и подписок.
  */
-export type CTraderReconnectHandler = (connection: { sendCommand: (payloadType: string | number, data?: Record<string, unknown>) => Promise<Record<string, unknown>> }) => Promise<void>;
+export type CTraderReconnectHandler = (connection: { sendCommand: (payloadType: string | number, data?: CTraderPayload) => Promise<CTraderPayload> }) => Promise<void>;
 
 /**
  * Параметры соединения с cTrader Open API.

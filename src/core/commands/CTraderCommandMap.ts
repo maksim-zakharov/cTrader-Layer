@@ -1,3 +1,4 @@
+import type { CTraderEncodable } from "#types";
 import { CTraderCommand } from "#commands/CTraderCommand";
 import { CTraderCommandMapParameters } from "#commands/CTraderCommandMapParameters";
 import { GenericObject } from "#utilities/GenericObject";
@@ -7,7 +8,7 @@ import { GenericObject } from "#utilities/GenericObject";
  */
 export class CTraderCommandMap {
     readonly #openCommands: Map<string, CTraderCommand>;
-    readonly #send: (...parameters: any[]) => void;
+    readonly #send: (data: CTraderEncodable) => void;
 
     /**
      * @param parameters - Параметры (функция отправки сообщений)
@@ -23,7 +24,7 @@ export class CTraderCommandMap {
 
     public create ({ clientMsgId, message, }: {
         clientMsgId: string;
-        message: GenericObject;
+        message: CTraderEncodable;
     }): Promise<GenericObject> {
         const command: CTraderCommand = new CTraderCommand({ clientMsgId, });
 

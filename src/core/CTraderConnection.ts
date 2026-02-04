@@ -6,6 +6,7 @@ import { CTraderEncoderDecoder } from "#encoder-decoder/CTraderEncoderDecoder";
 import { CTraderSocket } from "#sockets/CTraderSocket";
 import { GenericObject } from "#utilities/GenericObject";
 import { CTraderProtobufReader } from "#protobuf/CTraderProtobufReader";
+import type { CTraderDecodedMessage, CTraderEncodable, CTraderPayload } from "#types";
 import { CTraderConnectionParameters, CTraderReconnectHandler } from "#CTraderConnectionParameters";
 import axios from "axios";
 
@@ -35,7 +36,7 @@ export class CTraderConnection extends EventEmitter {
         const { host, port, } = parameters;
 
         this.#params = parameters;
-        this.#commandMap = new CTraderCommandMap({ send: (data: any): void => this.#send(data), });
+        this.#commandMap = new CTraderCommandMap({ send: (data: CTraderEncodable): void => this.#send(data), });
         this.#encoderDecoder = new CTraderEncoderDecoder();
         // eslint-disable-next-line max-len
         this.#protobufReader = new CTraderProtobufReader([ {
@@ -52,7 +53,7 @@ export class CTraderConnection extends EventEmitter {
         this.#protobufReader.build();
 
         this.#socket.onOpen = (): void => this.#onOpen();
-        this.#socket.onData = (data: any): void => this.#onData(data);
+        this.#socket.onData = (data: Buffer): void => this.#onData(data);
         this.#socket.onClose = (): void => this.#onClose();
         this.#socket.onError = (err: Error): void => this.#onError(err);
     }
@@ -76,7 +77,7 @@ export class CTraderConnection extends EventEmitter {
     async sendCommand (payloadType: string | number, data?: GenericObject): Promise<GenericObject> {
         const clientMsgId: string = v1();
         const normalizedPayloadType: number = typeof payloadType === "number" ? payloadType : this.getPayloadTypeByName(payloadType);
-        const message: any = this.#protobufReader.encode(normalizedPayloadType, data ?? {}, clientMsgId);
+        const message = this.#protobufReader.encode(normalizedPayloadType, data ?? {}, clientMsgId) as CTraderEncodable;
 
         return this.#commandMap.create({ clientMsgId, message, });
     }
@@ -160,13 +161,13 @@ export class CTraderConnection extends EventEmitter {
      * @param listener - Обработчик события
      * @returns this для цепочки вызовов
      */
-    public override on (type: string, listener: (...parameters: any) => any): this {
+    public override on (type: string, listener: (payload: CTraderPayload) => void): this {
         const normalizedType: string = Number.isFinite(Number.parseInt(type, 10)) ? type : this.getPayloadTypeByName(type).toString();
 
         return super.on(normalizedType, listener);
     }
 
-    #send (data: GenericObject): void {
+    #send (data: CTraderEncodable): void {
         this.#socket.send(this.#encoderDecoder.encode(data));
     }
 
@@ -186,10 +187,8 @@ export class CTraderConnection extends EventEmitter {
         this.#encoderDecoder.decode(data);
     }
 
-    #onDecodedData (data: GenericObject): void {
-        const payloadType = data.payloadType;
-        const payload = data.payload;
-        const clientMsgId = data.clientMsgId;
+    #onDecodedData (data: CTraderDecodedMessage): void {
+        const { payloadType, payload, clientMsgId, } = data;
         const sentCommand = this.#commandMap.extractById(clientMsgId);
 
         if (sentCommand) {
@@ -272,7 +271,7 @@ export class CTraderConnection extends EventEmitter {
         }
     }
 
-    #onPushEvent (payloadType: number, message: GenericObject): void {
+    #onPushEvent (payloadType: number, message: CTraderPayload): void {
         this.emit(payloadType.toString(), message);
     }
 

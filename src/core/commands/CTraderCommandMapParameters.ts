@@ -1,7 +1,9 @@
+import type { CTraderEncodable } from "#types";
+
 /**
  * Параметры карты команд.
  */
 export type CTraderCommandMapParameters = {
     /** Функция отправки сообщения на сервер */
-    send: (...parameters: any[]) => void;
+    send: (data: CTraderEncodable) => void;
 };

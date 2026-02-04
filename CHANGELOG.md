@@ -1,3 +1,11 @@
+1.4.4 - 03-02-2025
+===================
+* Добавлены типы: CTraderPayload, CTraderDecodedMessage, CTraderEncodable, CTraderEventListener.
+* GenericObject заменён на Record<string, unknown>.
+* Убраны все использования any, добавлены строгие типы.
+* Добавлены интерфейсы для protobuf (ProtoFileOption, ProtobufBuilder, ProtobufReflect и др.).
+* Экспорт типов из пакета (src/core/types).
+
 1.4.3 - 03-02-2025
 ===================
 * Обновлён axios с 0.21.1 до ^1.6.0 (исправление уязвимостей).
