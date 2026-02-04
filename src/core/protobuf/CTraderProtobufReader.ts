@@ -2,6 +2,9 @@ import { GenericObject } from "#utilities/GenericObject";
 
 const protobuf = require("protobufjs");
 
+/**
+ * Читатель и кодировщик protobuf-сообщений cTrader Open API.
+ */
 export class CTraderProtobufReader {
     #params: any;
     #builder: any;
@@ -21,6 +24,12 @@ export class CTraderProtobufReader {
         this.#enums = {};
     }
 
+    /**
+     * Кодирует сообщение в protobuf.
+     * @param payloadType - Числовой тип payload
+     * @param params - Параметры сообщения
+     * @param clientMsgId - Идентификатор сообщения клиента
+     */
     public encode (payloadType: number, params: GenericObject, clientMsgId: string): any {
         const Message = this.getMessageByPayloadType(payloadType);
         const message = new Message(params);
@@ -122,6 +131,10 @@ export class CTraderProtobufReader {
         return field.defaultValue;
     }
 
+    /**
+     * Возвращает класс сообщения по payload type.
+     * @param payloadType - Числовой тип payload
+     */
     public getMessageByPayloadType (payloadType: number): any {
         return this.#payloadTypes[payloadType].messageBuilded;
     }
@@ -130,6 +143,10 @@ export class CTraderProtobufReader {
         return this.#names[name].messageBuilded;
     }
 
+    /**
+     * Возвращает payload type по имени сообщения.
+     * @param name - Имя сообщения
+     */
     public getPayloadTypeByName (name: string): number {
         return this.#names[name].payloadType;
     }

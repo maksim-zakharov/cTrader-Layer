@@ -2,10 +2,16 @@ import { CTraderCommand } from "#commands/CTraderCommand";
 import { CTraderCommandMapParameters } from "#commands/CTraderCommandMapParameters";
 import { GenericObject } from "#utilities/GenericObject";
 
+/**
+ * Карта ожидающих команд по clientMsgId.
+ */
 export class CTraderCommandMap {
     readonly #openCommands: Map<string, CTraderCommand>;
     readonly #send: (...parameters: any[]) => void;
 
+    /**
+     * @param parameters - Параметры (функция отправки сообщений)
+     */
     public constructor ({ send, }: CTraderCommandMapParameters) {
         this.#openCommands = new Map();
         this.#send = send;
