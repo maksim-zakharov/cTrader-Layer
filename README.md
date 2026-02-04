@@ -1,20 +1,16 @@
 # cTrader Layer
+A Node.js communication layer for the cTrader [Open API](https://connect.spotware.com).<br>
+This implementation is created and maintained by Reiryoku Technologies and its contributors.
 
-Node.js слой для работы с [cTrader Open API](https://connect.spotware.com).<br>
-Реализация создана и поддерживается Reiryoku Technologies и контрибьюторами.
-
-## Установка
-
-```bash
+## Installation
+```console
 npm install @max89701/ctrader-layer
 ```
 
-## Использование
+## Usage
+For the cTrader Open API usage refer to the [Open API Documentation](https://spotware.github.io/open-api-docs/).
 
-Подробная документация по cTrader Open API: [Open API Documentation](https://spotware.github.io/open-api-docs/).
-
-### Подключение к серверу
-
+### How to establish a connection
 ```javascript
 const { CTraderConnection } = require("@max89701/ctrader-layer");
 
@@ -26,161 +22,49 @@ const connection = new CTraderConnection({
 await connection.open();
 ```
 
-### Отправка команд
-
-Метод `sendCommand` отправляет команду и возвращает `Promise`, который разрешается при получении ответа от сервера. При ошибке (наличие `errorCode` в ответе) `Promise` отклоняется.
-
-```javascript
-const response = await connection.sendCommand("ProtoOAVersionReq", {});
-console.log(response.version);
-```
-
-### Обработка ошибок
+### How to send commands
+You can use the `sendCommand` method to send a command with payload to the server.
+The method returns a `Promise` resolved only when a response from the server is received.
+If the response to the command contains an error code then the returned `Promise` is rejected.
 
 ```javascript
-try {
-    await connection.sendCommand("ProtoOANewOrderReq", { /* ... */ });
-} catch (error) {
-    // error содержит payload с errorCode и description
-    console.error("Ошибка:", error.errorCode, error.description);
-}
-
-// Без выброса исключения:
-const result = await connection.trySendCommand("ProtoOANewOrderReq", {});
-if (result === undefined) {
-    console.log("Команда не выполнена");
-}
+await connection.sendCommand("PayloadName", {
+    foo: "bar",
+});
 ```
 
-### Аутентификация приложения
-
+### How to authenticate an application
 ```javascript
 await connection.sendCommand("ProtoOAApplicationAuthReq", {
-    clientId: "your-client-id",
-    clientSecret: "your-client-secret",
+    clientId: "foo",
+    clientSecret: "bar",
 });
 ```
 
-### Аутентификация аккаунта
-
+### How to keep connection alive
+You can send a heartbeat message every 25 seconds to keep the connection alive.
 ```javascript
-await connection.sendCommand("ProtoOAAccountAuthReq", {
-    ctidTraderAccountId: 12345678,
-    accessToken: "your-access-token",
-});
-```
-
-### Поддержание соединения (heartbeat)
-
-Отправляйте heartbeat каждые 25 секунд или используйте встроенный интервал:
-
-```javascript
-// Вручную
 setInterval(() => connection.sendHeartbeat(), 25000);
-
-// Или встроенный интервал
-connection.startHeartbeat(25000);
 ```
 
-### Подписка на события
-
-События можно подписывать по имени сообщения или по числовому `payloadType`:
-
+### How to listen events from server
 ```javascript
-// По имени события
-connection.on("ProtoOAExecutionEvent", (payload) => {
-    console.log("Исполнение:", payload);
-});
-
-connection.on("ProtoOASpotEvent", (payload) => {
-    console.log("Спот:", payload);
-});
-
-// По числовому payload type (например, 2126 для ProtoOAExecutionEvent)
-connection.on("2126", (payload) => {
-    console.log(payload);
+connection.on("EventName", (event) => {
+    console.log(event);
 });
 ```
 
-### Переподключение и переподписки
-
-При разрыве соединения можно включить автоматическое переподключение с повторной аутентификацией и подписками:
-
+### How to get the access token profile information
+Through HTTP request.
 ```javascript
-const connection = new CTraderConnection({
-    host: "demo.ctraderapi.com",
-    port: 5035,
-    autoReconnect: true,
-    maxReconnectAttempts: 5,
-    reconnectDelayMs: 1000,
-});
-
-// Обработчик для повторной аутентификации и подписок после переподключения
-connection.addReconnectHandler(async (conn) => {
-    await conn.sendCommand("ProtoOAApplicationAuthReq", {
-        clientId: "your-client-id",
-        clientSecret: "your-client-secret",
-    });
-    await conn.sendCommand("ProtoOAAccountAuthReq", {
-        ctidTraderAccountId: 12345678,
-        accessToken: "your-access-token",
-    });
-    await conn.sendCommand("ProtoOASubscribeSpotsReq", {
-        ctidTraderAccountId: 12345678,
-        symbolId: [1, 2, 3],
-    });
-});
-
-connection.on("reconnected", () => {
-    console.log("Переподключение выполнено");
-});
-
-connection.on("reconnectFailed", (err) => {
-    console.error("Не удалось переподключиться:", err);
-});
+console.log(await CTraderConnection.getAccessTokenProfile("access-token"));
 ```
 
-### Закрытие соединения
-
+### How to get the access token accounts
+Through HTTP request.
 ```javascript
-connection.close();
+console.log(await CTraderConnection.getAccessTokenAccounts("access-token"));
 ```
-
-### Получение профиля и аккаунтов по access token (HTTP API)
-
-```javascript
-const profile = await CTraderConnection.getAccessTokenProfile("access-token");
-const accounts = await CTraderConnection.getAccessTokenAccounts("access-token");
-```
-
-## События соединения
-
-| Событие | Описание |
-|---------|----------|
-| `open` | Соединение установлено |
-| `close` | Соединение закрыто |
-| `error` | Ошибка (передаётся объект Error) |
-| `reconnecting` | Начата попытка переподключения |
-| `reconnected` | Переподключение успешно |
-| `reconnectFailed` | Исчерпаны попытки переподключения |
-
-## Типы (TypeScript)
-
-```typescript
-import {
-    CTraderConnection,
-    CTraderConnectionParameters,
-    CTraderEventPayload,
-    CTraderEventListener,
-    CTraderReconnectHandler,
-} from "@max89701/ctrader-layer";
-```
-
-## Требования
-
-- Node.js 12+
-- TypeScript 4.4+ (при использовании типов)
 
 ## Contribution
-
-Создайте PR или откройте issue для сообщений об ошибках и предложений.
+You can create a PR or open an issue for bug reports or ideas.

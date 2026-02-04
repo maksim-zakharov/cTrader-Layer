@@ -1,9 +1,4 @@
-/**
- * Параметры TLS-сокета для cTrader.
- */
-export interface CTraderSocketParameters {
-    /** Хост сервера */
+export type CTraderSocketParameters = {
     host: string;
-    /** Порт сервера */
     port: number;
-}
+};

@@ -1,9 +1,6 @@
 import { CTraderCommandParameters } from "#commands/CTraderCommandParameters";
 import { GenericObject } from "#utilities/GenericObject";
 
-/**
- * Команда, ожидающая ответа от сервера cTrader.
- */
 export class CTraderCommand {
     readonly #clientMsgId: string;
     readonly #responsePromise: Promise<GenericObject>;
@@ -11,9 +8,6 @@ export class CTraderCommand {
     #resolve?: (response: GenericObject) => void;
     #reject?: (response: GenericObject) => void;
 
-    /**
-     * @param parameters - Параметры команды (clientMsgId)
-     */
     public constructor ({ clientMsgId, }: CTraderCommandParameters) {
         this.#clientMsgId = clientMsgId;
         this.#responsePromise = new Promise((resolve: (response: GenericObject) => void, reject: (response: GenericObject) => void) => {

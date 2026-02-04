@@ -2,9 +2,6 @@ import { GenericObject } from "#utilities/GenericObject";
 
 const protobuf = require("protobufjs");
 
-/**
- * Читатель и кодировщик protobuf-сообщений cTrader Open API.
- */
 export class CTraderProtobufReader {
     #params: any;
     #builder: any;
@@ -15,7 +12,7 @@ export class CTraderProtobufReader {
     readonly #messages: any;
     readonly #enums: any;
 
-    public constructor (options: Array<{ file: string }>) {
+    public constructor (options: GenericObject) {
         this.#params = options;
         this.#builder = undefined;
         this.#payloadTypes = {};
@@ -31,7 +28,7 @@ export class CTraderProtobufReader {
         return this.#wrap(payloadType, message, clientMsgId).encode();
     }
 
-    public decode (buffer: Buffer | Uint8Array): GenericObject {
+    public decode (buffer: GenericObject): any {
         const protoMessage = this.getMessageByName("ProtoMessage").decode(buffer);
         const payloadType = protoMessage.payloadType;
 

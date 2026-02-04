@@ -1,17 +1,3 @@
-1.4.0 - 03-02-2025
-===================
-* Добавлен JSDoc ко всем публичным методам и классам.
-* Расширен README: примеры обработки ошибок, типы, события, переподключение.
-* Добавлены типы событий: CTraderEventPayload, CTraderEventListener, CTraderReconnectHandler.
-* Реализовано автоматическое переподключение при разрыве соединения (autoReconnect, maxReconnectAttempts, reconnectDelayMs).
-* Добавлены обработчики переподключения addReconnectHandler/removeReconnectHandler для повторной аутентификации и подписок.
-* Добавлены события: open, close, error, reconnecting, reconnected, reconnectFailed.
-* Добавлено закрытие соединения: метод close().
-* Добавлены startHeartbeat/stopHeartbeat для автоматической отправки heartbeat.
-* Исправлена работа getAccessTokenProfile и getAccessTokenAccounts (использование response.data вместо JSON.parse).
-* Исправлен tls.connect: убран @ts-ignore, корректная передача колбэков.
-* Добавлен метод rejectAll в CTraderCommandMap для отклонения ожидающих команд при закрытии.
-
 1.3.0 - 06-07-2021
 ===================
 * Create internal decoding of payload type.

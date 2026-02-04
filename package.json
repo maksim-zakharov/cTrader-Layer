@@ -1,6 +1,6 @@
 {
     "name": "@max89701/ctrader-layer",
-    "version": "1.4.0",
+    "version": "1.3.12",
     "description": "A Node.js communication layer for the cTrader Open API.",
     "license": "MIT",
     "homepage": "https://github.com/maksim-zakharov/cTrader-Layer",

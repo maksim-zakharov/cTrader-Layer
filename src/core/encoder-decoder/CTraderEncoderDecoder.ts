@@ -1,15 +1,11 @@
 import { Buffer } from "buffer";
 import { GenericObject } from "#utilities/GenericObject";
 
-/**
- * Кодировщик/декодировщик сообщений cTrader.
- * Формат: 4 байта (длина big-endian) + protobuf payload.
- */
 export class CTraderEncoderDecoder {
     readonly #sizeLength: number;
     #size?: number;
     #tail?: Buffer;
-    #decodeHandler?: (buffer: Buffer) => void;
+    #decodeHandler?: (...parameters: any[]) => any;
 
     public constructor () {
         this.#sizeLength = 4;
@@ -18,16 +14,12 @@ export class CTraderEncoderDecoder {
         this.#decodeHandler = undefined;
     }
 
-    /**
-     * Устанавливает обработчик декодированных данных.
-     * @param handler - Колбэк, вызываемый с декодированным буфером
-     */
-    public setDecodeHandler (handler: (buffer: Buffer) => void): void {
+    public setDecodeHandler (handler: (...parameters: any[]) => any): void {
         this.#decodeHandler = handler;
     }
 
-    public encode (data: Buffer): Buffer {
-        const normalizedData = data;
+    public encode (data: GenericObject): Buffer {
+        const normalizedData = data.toBuffer();
         const sizeLength: number = this.#sizeLength;
         const normalizedDataLength: number = normalizedData.length;
         const size = Buffer.alloc(sizeLength);
