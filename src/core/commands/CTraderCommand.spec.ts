@@ -2,6 +2,9 @@ import { CTraderCommand } from "#commands/CTraderCommand";
 import { CTraderCommandError } from "#CTraderCommandError";
 
 describe("CTraderCommand", () => {
+    afterEach(() => {
+        jest.useRealTimers();
+    });
     it("резолвит промис ответом", async () => {
         const command = new CTraderCommand({ clientMsgId: "id-1", });
         const payload = { version: "1", };
@@ -28,6 +31,7 @@ describe("CTraderCommand", () => {
     });
 
     it("срабатывает таймаут и вызывает onTimeout", async () => {
+        jest.useFakeTimers();
         const onTimeout = jest.fn();
         const command = new CTraderCommand({
             clientMsgId: "id-4",
@@ -35,6 +39,7 @@ describe("CTraderCommand", () => {
             onTimeout,
         });
 
+        jest.advanceTimersByTime(20);
         await expect(command.responsePromise).rejects.toMatchObject({
             errorCode: "COMMAND_TIMEOUT",
         });
@@ -42,6 +47,7 @@ describe("CTraderCommand", () => {
     });
 
     it("resolve отменяет таймаут", async () => {
+        jest.useFakeTimers();
         const onTimeout = jest.fn();
         const command = new CTraderCommand({
             clientMsgId: "id-5",
@@ -50,7 +56,7 @@ describe("CTraderCommand", () => {
         });
 
         command.resolve({ ok: true, });
-        await new Promise((resolve) => setTimeout(resolve, 70));
+        jest.advanceTimersByTime(70);
         expect(onTimeout).not.toHaveBeenCalled();
         await expect(command.responsePromise).resolves.toEqual({ ok: true, });
     });

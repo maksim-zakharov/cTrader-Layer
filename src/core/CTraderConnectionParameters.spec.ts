@@ -12,11 +12,12 @@ describe("computeReconnectDelayMs", () => {
     });
 
     it("с jitter возвращает значение в диапазоне 50–100% от backoff", () => {
-        jest.spyOn(Math, "random").mockReturnValue(0);
+        const random = jest.spyOn(Math, "random");
 
+        random.mockReturnValue(0);
         expect(computeReconnectDelayMs(1, 1000, 30_000, true)).toBe(500);
 
-        (Math.random as jest.Mock).mockReturnValue(1);
+        random.mockReturnValue(1);
         expect(computeReconnectDelayMs(1, 1000, 30_000, true)).toBe(1000);
     });
 });

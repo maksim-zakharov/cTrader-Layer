@@ -2,6 +2,9 @@ import { CTraderCommandMap } from "#commands/CTraderCommandMap";
 import { CTraderCommandError } from "#CTraderCommandError";
 
 describe("CTraderCommandMap", () => {
+    afterEach(() => {
+        jest.useRealTimers();
+    });
     it("отправляет сообщение и резолвит команду по clientMsgId", async () => {
         const sent: Buffer[] = [];
         const map = new CTraderCommandMap({
@@ -45,6 +48,7 @@ describe("CTraderCommandMap", () => {
     });
 
     it("таймаут удаляет команду из карты", async () => {
+        jest.useFakeTimers();
         const map = new CTraderCommandMap({ send: (): void => undefined, });
         const promise = map.create({
             clientMsgId: "slow",
@@ -53,6 +57,7 @@ describe("CTraderCommandMap", () => {
         });
 
         expect(map.openCommands).toHaveLength(1);
+        jest.advanceTimersByTime(20);
         await expect(promise).rejects.toMatchObject({ errorCode: "COMMAND_TIMEOUT", });
         expect(map.openCommands).toHaveLength(0);
     });

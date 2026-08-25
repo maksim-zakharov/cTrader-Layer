@@ -81,3 +81,25 @@ export async function openTestConnection (testConnection: TestConnection): Promi
     testConnection.socket.simulateOpen();
     await openPromise;
 }
+
+/**
+ * Приводит protobuf int64 к number (protobufjs может отдать Long или number).
+ * @param value - Декодированное поле
+ */
+export function protoNumber (value: unknown): number {
+    if (typeof value === "number") {
+        return value;
+    }
+
+    if (typeof value === "string" && value !== "") {
+        return Number(value);
+    }
+
+    const candidate = value as { toNumber?: () => number } | null | undefined;
+
+    if (candidate && typeof candidate.toNumber === "function") {
+        return candidate.toNumber();
+    }
+
+    throw new Error(`Нечисловое proto-поле: ${String(value)}`);
+}

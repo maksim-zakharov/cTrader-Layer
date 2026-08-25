@@ -1,9 +1,10 @@
 import { CTraderCommandError } from "#CTraderCommandError";
-import { CTraderEncoderDecoder } from "#encoder-decoder/CTraderEncoderDecoder";
 import {
     createTestConnection,
     frameMessage,
     openTestConnection,
+    protoNumber,
+    TestConnection,
     unframeMessage,
 } from "./__tests__/test-utils";
 
@@ -12,12 +13,26 @@ function toBuffer (encoded: Buffer | { toBuffer: () => Buffer }): Buffer {
 }
 
 describe("CTraderConnection", () => {
+    const opened: TestConnection[] = [];
+
     afterEach(() => {
+        for (const test of opened) {
+            test.connection.close();
+        }
+        opened.length = 0;
         jest.useRealTimers();
     });
 
+    function setup (parameters?: Parameters<typeof createTestConnection>[0]): TestConnection {
+        const test = createTestConnection(parameters);
+
+        opened.push(test);
+
+        return test;
+    }
+
     it("открывается и выставляет state open", async () => {
-        const test = createTestConnection();
+        const test = setup();
         const states: string[] = [];
 
         test.connection.on("stateChange", (state) => states.push(state));
@@ -30,7 +45,7 @@ describe("CTraderConnection", () => {
     });
 
     it("подписка on('open') не резолвит protobuf-имя", async () => {
-        const test = createTestConnection();
+        const test = setup();
         const onOpen = jest.fn();
 
         test.connection.on("open", onOpen);
@@ -39,7 +54,7 @@ describe("CTraderConnection", () => {
     });
 
     it("sendCommand резолвится ответом с тем же clientMsgId", async () => {
-        const test = createTestConnection();
+        const test = setup();
 
         await openTestConnection(test);
         const pending = test.connection.sendCommand("ProtoOAVersionReq", {});
@@ -55,7 +70,7 @@ describe("CTraderConnection", () => {
     });
 
     it("sendCommand реджектит CTraderCommandError при errorCode", async () => {
-        const test = createTestConnection();
+        const test = setup();
 
         await openTestConnection(test);
         const pending = test.connection.sendCommand("ProtoOAVersionReq", {});
@@ -75,16 +90,18 @@ describe("CTraderConnection", () => {
     });
 
     it("trySendCommand возвращает undefined на CTraderCommandError", async () => {
-        const test = createTestConnection({ commandTimeoutMs: 30, });
+        jest.useFakeTimers();
+        const test = setup({ commandTimeoutMs: 30, });
 
         await openTestConnection(test);
-        const result = await test.connection.trySendCommand("ProtoOAVersionReq", {});
+        const pending = test.connection.trySendCommand("ProtoOAVersionReq", {});
 
-        expect(result).toBeUndefined();
+        jest.advanceTimersByTime(30);
+        await expect(pending).resolves.toBeUndefined();
     });
 
     it("sendHeartbeat не попадает в карту команд", async () => {
-        const test = createTestConnection();
+        const test = setup();
 
         await openTestConnection(test);
         test.socket.clearSent();
@@ -99,7 +116,7 @@ describe("CTraderConnection", () => {
 
     it("автоматически шлёт heartbeat по интервалу", async () => {
         jest.useFakeTimers();
-        const test = createTestConnection({ heartbeatIntervalMs: 25, });
+        const test = setup({ heartbeatIntervalMs: 25, });
 
         await openTestConnection(test);
         test.socket.clearSent();
@@ -111,17 +128,21 @@ describe("CTraderConnection", () => {
     });
 
     it("таймаут команды отклоняет промис кодом COMMAND_TIMEOUT", async () => {
-        const test = createTestConnection({ commandTimeoutMs: 30, });
+        jest.useFakeTimers();
+        const test = setup({ commandTimeoutMs: 30, });
 
         await openTestConnection(test);
-        await expect(test.connection.sendCommand("ProtoOAVersionReq", {})).rejects.toMatchObject({
+        const pending = test.connection.sendCommand("ProtoOAVersionReq", {});
+
+        jest.advanceTimersByTime(30);
+        await expect(pending).rejects.toMatchObject({
             errorCode: "COMMAND_TIMEOUT",
         });
         expect(test.connection.pendingCommandCount).toBe(0);
     });
 
     it("эмитит ProtoOASpotEvent по имени и позволяет off", async () => {
-        const test = createTestConnection();
+        const test = setup();
 
         await openTestConnection(test);
         const listener = jest.fn();
@@ -137,10 +158,10 @@ describe("CTraderConnection", () => {
 
         test.socket.simulateData(frameMessage(toBuffer(encoded)));
         expect(listener).toHaveBeenCalledTimes(1);
-        const spot = listener.mock.calls[0][0] as { ctidTraderAccountId: { toNumber: () => number }; symbolId: { toNumber: () => number } };
+        const spot = listener.mock.calls[0][0] as Record<string, unknown>;
 
-        expect(spot.ctidTraderAccountId.toNumber()).toBe(1);
-        expect(spot.symbolId.toNumber()).toBe(2);
+        expect(protoNumber(spot.ctidTraderAccountId)).toBe(1);
+        expect(protoNumber(spot.symbolId)).toBe(2);
 
         test.connection.off("ProtoOASpotEvent", listener);
         test.socket.simulateData(frameMessage(toBuffer(encoded)));
@@ -148,7 +169,7 @@ describe("CTraderConnection", () => {
     });
 
     it("эмитит unknownMessage вместо падения на неизвестном payloadType", async () => {
-        const test = createTestConnection();
+        const test = setup();
 
         await openTestConnection(test);
         const unknownListener = jest.fn();
@@ -171,7 +192,7 @@ describe("CTraderConnection", () => {
 
     it("переподключается после close сокета и вызывает handler", async () => {
         jest.useFakeTimers();
-        const test = createTestConnection({
+        const test = setup({
             autoReconnect: true,
             reconnectDelayMs: 1000,
             maxReconnectAttempts: 5,
@@ -213,44 +234,44 @@ describe("CTraderConnection", () => {
 
     it("эмитит reconnectFailed и close после исчерпания попыток", async () => {
         jest.useFakeTimers();
-        const test = createTestConnection({
+        const test = setup({
             autoReconnect: true,
             reconnectDelayMs: 100,
             maxReconnectAttempts: 1,
             heartbeatIntervalMs: 0,
         });
-        const failed = jest.fn();
+        const failed = new Promise<void>((resolve) => {
+            test.connection.on("reconnectFailed", () => resolve());
+        });
         const closed = jest.fn();
 
-        test.connection.on("reconnectFailed", failed);
         test.connection.on("close", closed);
         test.connection.on("error", (): void => undefined);
         await openTestConnection(test);
         test.socket.simulateClose();
         jest.advanceTimersByTime(100);
         test.socket.simulateError(new Error("нет сети"));
-        await Promise.resolve();
-        await Promise.resolve();
+        await failed;
 
-        expect(failed).toHaveBeenCalledTimes(1);
         expect(closed).toHaveBeenCalled();
         expect(test.connection.state).toBe("closed");
     });
 
     it("не переподключается после явного close()", async () => {
-        const test = createTestConnection({ autoReconnect: true, reconnectDelayMs: 10, });
+        jest.useFakeTimers();
+        const test = setup({ autoReconnect: true, reconnectDelayMs: 10, });
         const reconnecting = jest.fn();
 
         test.connection.on("reconnecting", reconnecting);
         await openTestConnection(test);
         test.connection.close();
-        await new Promise((resolve) => setTimeout(resolve, 30));
+        jest.advanceTimersByTime(50);
         expect(reconnecting).not.toHaveBeenCalled();
         expect(test.connection.state).toBe("closed");
     });
 
     it("close отклоняет ожидающие команды", async () => {
-        const test = createTestConnection();
+        const test = setup();
 
         await openTestConnection(test);
         const pending = test.connection.sendCommand("ProtoOAVersionReq", {});
@@ -260,7 +281,7 @@ describe("CTraderConnection", () => {
     });
 
     it("повторный open при открытом соединении не создаёт второй сокет", async () => {
-        const test = createTestConnection();
+        const test = setup();
 
         await openTestConnection(test);
         await test.connection.open();
@@ -269,7 +290,7 @@ describe("CTraderConnection", () => {
 
     it("повторяет команду при BLOCKED_PAYLOAD_TYPE если включён rateLimitRetry", async () => {
         jest.useFakeTimers();
-        const test = createTestConnection({
+        const test = setup({
             rateLimitRetry: true,
             commandTimeoutMs: 5000,
         });

@@ -12,4 +12,5 @@ module.exports = {
         "^.+\\.ts$": [ "ts-jest", { tsconfig: "tsconfig.spec.json", }, ],
     },
     clearMocks: true,
+    restoreMocks: true,
 };
