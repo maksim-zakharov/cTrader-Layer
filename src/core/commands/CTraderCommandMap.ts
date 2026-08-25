@@ -1,5 +1,6 @@
 import type { CTraderEncodable } from "#types";
 import { CTraderCommand } from "#commands/CTraderCommand";
+import { CTraderCommandError } from "#CTraderCommandError";
 import { CTraderCommandMapParameters } from "#commands/CTraderCommandMapParameters";
 import { GenericObject } from "#utilities/GenericObject";
 
@@ -22,11 +23,24 @@ export class CTraderCommandMap {
         return [ ...this.#openCommands.values(), ];
     }
 
-    public create ({ clientMsgId, message, }: {
+    /**
+     * Создаёт ожидающую команду, отправляет сообщение и возвращает промис ответа.
+     * @param parameters - clientMsgId, сообщение и таймаут
+     */
+    public create ({
+        clientMsgId, message, timeoutMs,
+    }: {
         clientMsgId: string;
         message: CTraderEncodable;
+        timeoutMs?: number;
     }): Promise<GenericObject> {
-        const command: CTraderCommand = new CTraderCommand({ clientMsgId, });
+        const command: CTraderCommand = new CTraderCommand({
+            clientMsgId,
+            timeoutMs,
+            onTimeout: (): void => {
+                this.#openCommands.delete(clientMsgId);
+            },
+        });
 
         this.#openCommands.set(clientMsgId, command);
         this.#send(message);
@@ -34,7 +48,15 @@ export class CTraderCommandMap {
         return command.responsePromise;
     }
 
-    public extractById (clientMsgId: string): CTraderCommand | undefined {
+    /**
+     * Извлекает команду по clientMsgId и удаляет её из карты.
+     * @param clientMsgId - Идентификатор сообщения
+     */
+    public extractById (clientMsgId: string | undefined): CTraderCommand | undefined {
+        if (!clientMsgId) {
+            return undefined;
+        }
+
         const command: CTraderCommand | undefined = this.#openCommands.get(clientMsgId);
 
         if (!command) {
@@ -48,11 +70,11 @@ export class CTraderCommandMap {
 
     /**
      * Отклоняет все ожидающие команды с указанной причиной.
-     * @param errorPayload - Payload с ошибкой для передачи в reject
+     * @param error - Ошибка для reject
      */
-    public rejectAll (errorPayload: GenericObject): void {
+    public rejectAll (error: CTraderCommandError): void {
         for (const command of this.#openCommands.values()) {
-            command.reject(errorPayload);
+            command.reject(error);
         }
 
         this.#openCommands.clear();

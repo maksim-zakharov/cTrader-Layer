@@ -2,7 +2,7 @@ import type { CTraderPayload } from "./index";
 
 /**
  * Payload события ProtoOASpotEvent.
- * Событие котировок символа (bid, ask).
+ * Событие котировок символа (bid, ask). Живые трендбары приходят в trendbar.
  */
 export interface ProtoOASpotEventPayload extends CTraderPayload {
     /** Идентификатор торгового счёта */
@@ -13,6 +13,8 @@ export interface ProtoOASpotEventPayload extends CTraderPayload {
     bid?: number;
     /** Цена ask (в 1/100000 единицы) */
     ask?: number;
+    /** Живые трендбары при подписке на live trendbar */
+    trendbar?: CTraderPayload[];
     /** Цена закрытия сессии */
     sessionClose?: number;
     /** Unix-время для spot */
@@ -115,11 +117,70 @@ export interface ProtoOAMarginChangedEventPayload extends CTraderPayload {
 
 /**
  * Payload события ProtoHeartbeatEvent.
- * Heartbeat для поддержания соединения.
+ * Heartbeat для поддержания соединения. Полей в proto нет.
  */
-export interface ProtoHeartbeatEventPayload extends CTraderPayload {
-    /** Unix-время в миллисекундах */
-    timestamp?: number;
+export interface ProtoHeartbeatEventPayload extends CTraderPayload {}
+
+/**
+ * Payload события ProtoOADepthEvent (стакан).
+ */
+export interface ProtoOADepthEventPayload extends CTraderPayload {
+    /** Идентификатор торгового счёта */
+    ctidTraderAccountId?: number;
+    /** Идентификатор символа */
+    symbolId?: number;
+    /** Новые/изменённые котировки стакана */
+    newQuotes?: CTraderPayload[];
+    /** Идентификаторы котировок к удалению */
+    deletedQuotes?: number[];
+}
+
+/**
+ * Payload события ProtoOAAccountDisconnectEvent.
+ */
+export interface ProtoOAAccountDisconnectEventPayload extends CTraderPayload {
+    /** Идентификатор торгового счёта */
+    ctidTraderAccountId?: number;
+}
+
+/**
+ * Payload события ProtoOAMarginCallUpdateEvent / ProtoOAMarginCallTriggerEvent.
+ */
+export interface ProtoOAMarginCallEventPayload extends CTraderPayload {
+    /** Идентификатор торгового счёта */
+    ctidTraderAccountId?: number;
+    /** Порог маржин-колла */
+    marginCall?: CTraderPayload;
+}
+
+/**
+ * Payload события ProtoOAv1PnLChangeEvent.
+ */
+export interface ProtoOAv1PnLChangeEventPayload extends CTraderPayload {
+    /** Идентификатор торгового счёта */
+    ctidTraderAccountId?: number;
+    /** Валовый нереализованный PnL */
+    grossUnrealizedPnL?: number;
+    /** Чистый нереализованный PnL */
+    netUnrealizedPnL?: number;
+    /** Экспонента денежных значений */
+    moneyDigits?: number;
+}
+
+/**
+ * Payload ProtoOAErrorRes, пришедшего без clientMsgId (push).
+ */
+export interface ProtoOAErrorResPayload extends CTraderPayload {
+    /** Идентификатор торгового счёта */
+    ctidTraderAccountId?: number;
+    /** Код ошибки */
+    errorCode?: string | number;
+    /** Описание */
+    description?: string;
+    /** Конец обслуживания (unix sec) */
+    maintenanceEndTimestamp?: number;
+    /** Секунд до разблокировки payload type */
+    retryAfter?: number;
 }
 
 /**
@@ -144,4 +205,10 @@ export interface CTraderEventMap {
     ProtoOAOrderErrorEvent: ProtoOAOrderErrorEventPayload;
     ProtoOAMarginChangedEvent: ProtoOAMarginChangedEventPayload;
     ProtoHeartbeatEvent: ProtoHeartbeatEventPayload;
+    ProtoOADepthEvent: ProtoOADepthEventPayload;
+    ProtoOAAccountDisconnectEvent: ProtoOAAccountDisconnectEventPayload;
+    ProtoOAMarginCallUpdateEvent: ProtoOAMarginCallEventPayload;
+    ProtoOAMarginCallTriggerEvent: ProtoOAMarginCallEventPayload;
+    ProtoOAv1PnLChangeEvent: ProtoOAv1PnLChangeEventPayload;
+    ProtoOAErrorRes: ProtoOAErrorResPayload;
 }

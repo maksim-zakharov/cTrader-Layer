@@ -26,6 +26,10 @@ export class CTraderEncoderDecoder {
         this.#decodeHandler = handler;
     }
 
+    /**
+     * Кодирует protobuf-payload в кадр Open API (длина + тело).
+     * @param data - Buffer или объект с toBuffer()
+     */
     public encode (data: CTraderEncodable): Buffer {
         const normalizedData = Buffer.isBuffer(data) ? data : data.toBuffer();
         const sizeLength: number = this.#sizeLength;
@@ -37,43 +41,41 @@ export class CTraderEncoderDecoder {
         return Buffer.concat([ size, normalizedData, ], sizeLength + normalizedDataLength);
     }
 
+    /**
+     * Декодирует входящий TCP-поток. Поддерживает склейку чанков и несколько сообщений в одном буфере.
+     * @param buffer - Очередной кусок данных
+     */
     public decode (buffer: Buffer): void {
-        const size: number | undefined = this.#size;
-        let usedBuffer: Buffer = buffer;
+        let usedBuffer: Buffer = this.#tail
+            ? Buffer.concat([ this.#tail, buffer, ], this.#tail.length + buffer.length)
+            : buffer;
 
-        if (this.#tail) {
-            usedBuffer = Buffer.concat([ this.#tail, usedBuffer, ], this.#tail.length + usedBuffer.length);
+        this.#tail = undefined;
 
-            this.#tail = undefined;
-        }
+        while (usedBuffer.length > 0) {
+            if (this.#size === undefined) {
+                if (usedBuffer.length < this.#sizeLength) {
+                    this.#tail = usedBuffer;
 
-        if (size) {
-            if (usedBuffer.length >= size) {
-                if (this.#decodeHandler) {
-                    this.#decodeHandler(usedBuffer.slice(0, size));
+                    return;
                 }
 
-                this.#size = undefined;
-
-                if (usedBuffer.length !== size) {
-                    this.decode(usedBuffer.slice(size));
-                }
-
-                return;
-            }
-        }
-        else {
-            if (usedBuffer.length >= this.#sizeLength) {
                 this.#size = usedBuffer.readUInt32BE(0);
+                usedBuffer = usedBuffer.slice(this.#sizeLength);
+                continue;
+            }
 
-                if (usedBuffer.length !== this.#sizeLength) {
-                    this.decode(usedBuffer.slice(this.#sizeLength));
-                }
+            if (usedBuffer.length < this.#size) {
+                this.#tail = usedBuffer;
 
                 return;
             }
-        }
 
-        this.#tail = usedBuffer;
+            const message = usedBuffer.slice(0, this.#size);
+
+            usedBuffer = usedBuffer.slice(this.#size);
+            this.#size = undefined;
+            this.#decodeHandler?.(message);
+        }
     }
 }

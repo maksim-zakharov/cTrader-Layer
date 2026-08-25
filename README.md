@@ -1,7 +1,7 @@
 # cTrader Layer
 
-Node.js слой для работы с [cTrader Open API](https://connect.spotware.com).<br>
-Реализация создана и поддерживается Reiryoku Technologies и контрибьюторами.
+Node.js слой для работы с [cTrader Open API](https://help.ctrader.com/open-api/).<br>
+Форк [Reiryoku ctrader-layer](https://github.com/reiryoku-trader/ctrader-layer).
 
 ## Установка
 
@@ -9,9 +9,11 @@ Node.js слой для работы с [cTrader Open API](https://connect.spotw
 npm install @max89701/ctrader-layer
 ```
 
+Требуется **Node.js 14.17+**.
+
 ## Использование
 
-Подробная документация по cTrader Open API: [Open API Documentation](https://spotware.github.io/open-api-docs/).
+Подробная документация по cTrader Open API: [Open API Documentation](https://help.ctrader.com/open-api/).
 
 ### Подключение к серверу
 
@@ -24,11 +26,14 @@ const connection = new CTraderConnection({
 });
 
 await connection.open();
+console.log(connection.isOpen, connection.state); // true, "open"
 ```
+
+Heartbeat отправляется **автоматически каждые 25 секунд** (сервер рвёт соединение при тишине > 30 с). Отключить: `heartbeatIntervalMs: 0`.
 
 ### Отправка команд
 
-Метод `sendCommand` отправляет команду и возвращает `Promise`, который разрешается при получении ответа от сервера. При ошибке (наличие `errorCode` в ответе) `Promise` отклоняется.
+Метод `sendCommand` отправляет команду и возвращает `Promise`, который разрешается при получении ответа от сервера. По умолчанию ответ ждут **30 секунд**, иначе промис отклоняется с `errorCode: "COMMAND_TIMEOUT"`.
 
 ```javascript
 const response = await connection.sendCommand("ProtoOAVersionReq", {});
@@ -37,20 +42,27 @@ console.log(response.version);
 
 ### Обработка ошибок
 
+При ошибке Open API, таймауте или закрытии соединения промис отклоняется экземпляром `CTraderCommandError` (это `Error` с полями `errorCode`, `description`, `retryAfter`).
+
 ```javascript
+const { CTraderCommandError } = require("@max89701/ctrader-layer");
+
 try {
     await connection.sendCommand("ProtoOANewOrderReq", { /* ... */ });
 } catch (error) {
-    // error содержит payload с errorCode и description
-    console.error("Ошибка:", error.errorCode, error.description);
+    if (error instanceof CTraderCommandError) {
+        console.error("Ошибка:", error.errorCode, error.description, error.retryAfter);
+    }
 }
 
-// Без выброса исключения:
+// Без выброса CTraderCommandError:
 const result = await connection.trySendCommand("ProtoOANewOrderReq", {});
 if (result === undefined) {
     console.log("Команда не выполнена");
 }
 ```
+
+Один повтор после `BLOCKED_PAYLOAD_TYPE`: `rateLimitRetry: true`.
 
 ### Аутентификация приложения
 
@@ -70,17 +82,17 @@ await connection.sendCommand("ProtoOAAccountAuthReq", {
 });
 ```
 
-### Поддержание соединения (heartbeat)
+### Heartbeat
 
-Отправляйте heartbeat каждые 25 секунд:
+Автоматический интервал задаётся `heartbeatIntervalMs` (по умолчанию 25000). Ручной вызов не создаёт висящую команду:
 
 ```javascript
-setInterval(() => connection.sendHeartbeat(), 25000);
+connection.sendHeartbeat();
 ```
 
 ### Переподключение и переподписки
 
-При разрыве соединения можно включить автоматическое переподключение с повторной аутентификацией и подписками:
+При разрыве TLS (в том числе `ECONNRESET` / событие `close`) можно включить автоматическое переподключение с повторной аутентификацией и подписками:
 
 ```javascript
 const { CTraderConnection } = require("@max89701/ctrader-layer");
@@ -89,11 +101,11 @@ const connection = new CTraderConnection({
     host: "demo.ctraderapi.com",
     port: 5035,
     autoReconnect: true,
-    maxReconnectAttempts: 5,
+    maxReconnectAttempts: 0, // 0 = без лимита; по умолчанию 5
     reconnectDelayMs: 1000,
+    maxReconnectDelayMs: 30000,
 });
 
-// Обработчик для повторной аутентификации и подписок после переподключения
 connection.addReconnectHandler(async (conn) => {
     await conn.sendCommand("ProtoOAApplicationAuthReq", {
         clientId: "your-client-id",
@@ -118,6 +130,8 @@ connection.on("reconnectFailed", (err) => {
 });
 ```
 
+После исчерпания попыток эмитятся и `reconnectFailed`, и `close`.
+
 ### Закрытие соединения
 
 ```javascript
@@ -127,26 +141,26 @@ connection.close();
 ### Подписка на события
 
 События можно подписывать по имени сообщения или по числовому `payloadType`.
-Тип payload выводится автоматически по имени события из маппинга `CTraderEventMap`:
+`on` / `off` / `once` / `removeListener` нормализуют имя в payloadType. События жизненного цикла (`open`, `close`, `error`, …) не ищутся в proto.
 
 ```typescript
 import { CTraderConnection } from "@max89701/ctrader-layer";
 
-// Тип payload выводится автоматически — ProtoOASpotEventPayload
 connection.on("ProtoOASpotEvent", (payload) => {
-    // payload.ctidTraderAccountId, payload.symbolId, payload.bid, payload.ask — типизированы
     console.log("Спот:", payload.bid, payload.ask);
 });
 
-connection.on("ProtoOAExecutionEvent", (payload) => {
-    // payload.executionType, payload.errorCode и т.д.
-    console.log("Исполнение:", payload.executionType);
+connection.on("ProtoOADepthEvent", (payload) => {
+    console.log("Стакан:", payload.symbolId);
 });
 
-// По числовому payload type — payload: CTraderPayload
-connection.on("2131", (payload) => {
-    console.log("Спот:", payload);
+connection.on("unknownMessage", ({ payloadType }) => {
+    console.warn("Неизвестный payloadType", payloadType);
 });
+
+const onSpot = (payload) => { /* ... */ };
+connection.on("ProtoOASpotEvent", onSpot);
+connection.off("ProtoOASpotEvent", onSpot);
 ```
 
 Для расширения маппинга используйте module augmentation:
@@ -161,26 +175,59 @@ declare module "@max89701/ctrader-layer" {
 
 ### Получение профиля и аккаунтов по access token (HTTP API)
 
+Токен передаётся в заголовке `Authorization: Bearer …`, не в query string.
+
 ```javascript
 const profile = await CTraderConnection.getAccessTokenProfile("access-token");
 const accounts = await CTraderConnection.getAccessTokenAccounts("access-token");
 ```
+
+## Параметры соединения
+
+| Параметр | По умолчанию | Описание |
+|----------|--------------|----------|
+| `host`, `port` | — | Хост и порт Open API |
+| `autoReconnect` | `false` | Переподключение при обрыве |
+| `maxReconnectAttempts` | `5` | `0` — без лимита |
+| `reconnectDelayMs` | `1000` | Начальная задержка, экспоненциальный backoff |
+| `maxReconnectDelayMs` | `30000` | Потолок задержки |
+| `reconnectJitter` | `true` | Jitter 50–100% от backoff |
+| `commandTimeoutMs` | `30000` | `0` — без таймаута |
+| `heartbeatIntervalMs` | `25000` | `0` — выключить авто-heartbeat |
+| `tlsTimeoutMs` | — | Таймаут TLS-сокета |
+| `rateLimitRetry` | `false` | Повтор при `BLOCKED_PAYLOAD_TYPE` |
 
 ## События соединения
 
 | Событие | Описание |
 |---------|----------|
 | `open` | Соединение установлено |
-| `close` | Соединение закрыто |
-| `error` | Ошибка (передаётся объект Error) |
-| `reconnecting` | Начата попытка переподключения |
-| `reconnected` | Переподключение успешно |
+| `close` | Соединение закрыто (в т.ч. после исчерпания reconnect) |
+| `error` | Ошибка сокета (эмитится, только если есть слушатель) |
+| `reconnecting` | Начата попытка переподключения `{ attempt, maxAttempts, delayMs }` |
+| `reconnected` | Переподключение успешно, handlers выполнены |
 | `reconnectFailed` | Исчерпаны попытки переподключения |
+| `stateChange` | Смена `idle \| connecting \| open \| reconnecting \| closed` |
+| `unknownMessage` | Сервер прислал payloadType, которого нет в локальных proto |
 
-## Требования
+## Proto-файлы
 
-- Node.js 12+
+Снимок Spotware лежит в `openapi-proto-messages-main`. Обновление (Windows/Linux):
+
+```bash
+npm run pull-proto
+```
+
+## Разработка
+
+```bash
+npm test
+npm run build
+npm run lint
+```
 
 ## Contribution
 
 Создайте PR или откройте issue для сообщений об ошибках и предложений.
+
+Беклог: [BACKLOG.md](./BACKLOG.md).

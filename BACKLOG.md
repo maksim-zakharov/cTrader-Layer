@@ -1,8 +1,14 @@
 # Беклог @max89701/ctrader-layer
 
-Версия на момент обзора: **1.4.6**. Форк [Reiryoku ctrader-layer](https://github.com/reiryoku-trader/ctrader-layer): транспортный слой cTrader Open API (TLS + protobuf + команды/события).
+Версия на момент обзора: **1.5.0**. Форк [Reiryoku ctrader-layer](https://github.com/reiryoku-trader/ctrader-layer): транспортный слой cTrader Open API (TLS + protobuf + команды/события).
 
 Основной потребитель: **moex-arbitrage-bot** (`CtraderService`, `CtraderDepthQuotesService`, `CtraderTfConnectionPoolService`, `CtraderAccountConnection`). Часть логики, которой не хватает в слое, уже продублирована там — это сигнал, что её стоит поднять в библиотеку.
+
+## Статус
+
+**1.5.0 сделано:** P0.1–P0.4, P0.6; P1.7–P1.9, P1.11–P1.15; P1.10 частично (`rateLimitRetry`); P2.16, P2.19–P2.21; P2.22 частично (tls options + timeout); P2.23 (`trySendCommand` глотает только `CTraderCommandError`).
+
+**Дальше:** P0.5 / P2.18 → 2.0; P1.10 очередь лимитов; P2.17 CI; P3.
 
 ## Легенда приоритетов
 
@@ -17,7 +23,7 @@
 
 ## P0 — критично
 
-### 1. Переподключение не срабатывает на типичных обрывах TLS
+### 1. Переподключение не срабатывает на типичных обрывах TLS — **сделано в 1.5.0**
 
 `CTraderSocket` слушает только `end`, не `close`. При `ECONNRESET` / обрыве без FIN Node шлёт `error` + `close`, без `end`.
 
@@ -30,7 +36,7 @@
 
 Файлы: `src/core/sockets/CTraderSocket.ts`, `src/core/CTraderConnection.ts`.
 
-### 2. Неизвестный payloadType роняет декодер
+### 2. Неизвестный payloadType роняет декодер — **сделано в 1.5.0**
 
 `getMessageByPayloadType` обращается к `#payloadTypes[payloadType].messageBuilded` без проверки. Новое событие с сервера (свежий proto) → исключение в `#onDecodedData` → поток сообщений ломается.
 
@@ -38,7 +44,7 @@
 
 Файл: `src/core/protobuf/CTraderProtobufReader.ts`.
 
-### 3. `sendHeartbeat()` создаёт висящие команды
+### 3. `sendHeartbeat()` создаёт висящие команды — **сделано в 1.5.0**
 
 Heartbeat уходит через `sendCommand`, то есть попадает в `CTraderCommandMap` и ждёт ответ с `clientMsgId`. Это не request/response: сервер шлёт `ProtoHeartbeatEvent` без привязки к id.
 
@@ -46,7 +52,7 @@ Heartbeat уходит через `sendCommand`, то есть попадает 
 
 **Сделать:** отправлять heartbeat fire-and-forget, без записи в command map. Встроить авто-heartbeat (интервал 10–25 с, старт на `open`, стоп на `close`).
 
-### 4. Нет таймаута команд
+### 4. Нет таймаута команд — **сделано в 1.5.0**
 
 Если сервер не ответил, промис `sendCommand` висит бесконечно (пока не закроют сокет). Для торговли и истории свечей это зависания запросов.
 
@@ -58,7 +64,7 @@ Heartbeat уходит через `sendCommand`, то есть попадает 
 
 **Сделать:** миграция на `protobufjs@7` (proto2 совместим) или `@bufbuild/protobuf`. Это ломающее изменение — планировать как 2.0.
 
-### 6. Скрипт обновления proto сломан
+### 6. Скрипт обновления proto сломан — **сделано в 1.5.0**
 
 `scripts/pull-proto.sh` качает `.../archive/master.zip`, у Spotware ветка уже **`main`**. Распаковка закомментирована, отдельно `unzip.js`, bash+wget — не работает на Windows.
 
@@ -68,7 +74,7 @@ Heartbeat уходит через `sendCommand`, то есть попадает 
 
 ## P1 — высокий
 
-### 7. Авто-reconnect слишком хрупкий для бота
+### 7. Авто-reconnect слишком хрупкий для бота — **сделано в 1.5.0**
 
 - После `maxReconnectAttempts` (дефолт 5) процесс сдаётся навсегда. Нужен режим `Infinity` / `0 = без лимита`.
 - Нет jitter, только экспоненциальный backoff.
@@ -78,25 +84,25 @@ Heartbeat уходит через `sendCommand`, то есть попадает 
 
 **Сделать:** состояние (`idle | connecting | open | reconnecting | closed`), бесконечный retry с потолком задержки, один in-flight reconnect, событие `close` всегда, когда соединение окончательно потеряно.
 
-### 8. Нет встроенного heartbeat
+### 8. Нет встроенного heartbeat — **сделано в 1.5.0**
 
 Потребители дублируют `setInterval(..., 25000)` в трёх местах. Документация Spotware: соединение рвётся, если нет сообщений > 30 с.
 
 **Сделать:** опция `heartbeatIntervalMs` (дефолт 25000), автозапуск после `open`.
 
-### 9. Класс ошибки вместо «голого» payload
+### 9. Класс ошибки вместо «голого» payload — **сделано в 1.5.0**
 
 `sendCommand` реджектит сырым объектом `{ errorCode, description, retryAfter }`. В Nest это не `Error`, нет stack, неудобно логировать.
 
 **Сделать:** `CTraderCommandError extends Error` с полями `errorCode`, `description`, `retryAfter`, `payloadType`, `clientMsgId`. Сохранить совместимость: поля как у текущего payload.
 
-### 10. Rate limit Open API
+### 10. Rate limit Open API — **частично в 1.5.0** (`rateLimitRetry`)
 
 Лимиты Spotware (актуально на момент обзора): ~50 req/s обычные, ~5 req/s исторические. При превышении — `BLOCKED_PAYLOAD_TYPE` + `retryAfter`.
 
 В боте уже есть `ctrader-rate-limit-gate.ts`. Логично перенести в слой: очередь, пауза по `retryAfter`, опциональный автоповтор.
 
-### 11. Неполный `CTraderEventMap`
+### 11. Неполный `CTraderEventMap` — **сделано в 1.5.0** (ручные типы; генерация — P3)
 
 В proto есть события, которых нет в типах слоя. Бот уже дополняет карту через module augmentation (`ProtoOADepthEvent`).
 
@@ -112,25 +118,25 @@ Heartbeat уходит через `sendCommand`, то есть попадает 
 
 **Сделать:** типы 1:1 с текущим proto; генерировать из `.proto` (см. P2).
 
-### 12. Типизация `sendCommand`
+### 12. Типизация `sendCommand` — **частично в 1.5.0** (`sendCommand<TRes>`)
 
 Сейчас `Promise<GenericObject>`. Потребитель везде кастит `as ProtoOATraderRes` и т.д.
 
 **Сделать:** карта `CTraderCommandMapTypes` (req name → res type) по аналогии с `CTraderEventMap`. Минимум — generic `sendCommand<TRes>(...)`.
 
-### 13. `on` типизирован, `off` / `once` / `removeListener` — нет
+### 13. `on` типизирован, `off` / `once` / `removeListener` — нет — **сделано в 1.5.0**
 
 Подписка по имени события нормализуется в числовой payloadType. Отписка через `off("ProtoOASpotEvent")` не сработает: слушатель висит на `"2131"`.
 
 **Сделать:** те же overload’и для `off`, `once`, `removeListener`.
 
-### 14. HTTP API: токен в query string
+### 14. HTTP API: токен в query string — **сделано в 1.5.0** (Bearer; OAuth refresh — P3)
 
 `getAccessTokenProfile` / `getAccessTokenAccounts` передают `access_token` в URL (попадёт в логи прокси/axios). Нет обработки HTTP 401/429, нет refresh.
 
 **Сделать:** заголовок `Authorization`, типы ответа, метод обмена `code → tokens` (сейчас живёт в `ctrader-token.client.ts` бота).
 
-### 15. Состояние соединения
+### 15. Состояние соединения — **сделано в 1.5.0**
 
 Нет `isOpen` / `isConnecting`. Потребители ведут флаги снаружи (`_isInitialized`).
 
@@ -140,7 +146,7 @@ Heartbeat уходит через `sendCommand`, то есть попадает 
 
 ## P2 — средний
 
-### 16. Нет тестов
+### 16. Нет тестов — **сделано в 1.5.0**
 
 Нет Jest/`*.spec.ts`. В `tsconfig.json` указан несуществующий `jest.config.js`.
 
@@ -152,7 +158,7 @@ Heartbeat уходит через `sendCommand`, то есть попадает 
 - heartbeat не попадает в command map
 - неизвестный payloadType не бросает
 
-### 17. Нет CI
+### 17. Нет CI — **сделано в 1.5.0** (`.github/workflows/ci.yml`)
 
 Нет `.github/workflows` у самого пакета. Нужны lint, test, build на PR; публикация в npm по тегу.
 
@@ -167,35 +173,35 @@ Heartbeat уходит через `sendCommand`, то есть попадает 
 
 **Сделать:** TS 5.x, `tsc` без ttypescript, алиасы через `paths` + bundler **или** убрать алиасы (относительные импорты). `engines.node: ">=18"`. ESLint 9 / flat config.
 
-### 19. `removeComments: true` вырезает JSDoc из `.d.ts`
+### 19. `removeComments: true` вырезает JSDoc из `.d.ts` — **сделано в 1.5.0**
 
 Публичные методы имеют JSDoc, но в декларации пакета его нет.
 
 **Сделать:** `removeComments: false` (или только strip для js).
 
-### 20. Хрупкий путь к proto
+### 20. Хрупкий путь к proto — **сделано в 1.5.0**
 
 `path.resolve(__dirname, "../../../openapi-proto-messages-main/...")` завязан на структуру `build/`. Сломается при смене `outDir` или bundling.
 
 **Сделать:** резолв от `package.json` / `import.meta` / явный `protoDir` в параметрах.
 
-### 21. EncoderDecoder: рекурсия по чанкам
+### 21. EncoderDecoder: рекурсия по чанкам — **сделано в 1.5.0**
 
 `decode()` вызывает сам себя. Пачка сообщений в одном TCP-буфере может раздуть стек.
 
 **Сделать:** цикл вместо рекурсии.
 
-### 22. Сокет: `@ts-ignore`, нет timeout, нет `secureConnect`
+### 22. Сокет: `@ts-ignore`, нет timeout, нет `secureConnect` — **частично в 1.5.0**
 
 `tls.connect(port, host, cb)` без опций. Нет `socket.setTimeout`, нет проверки `authorized`.
 
 **Сделать:** явные `TlsOptions` (host, timeout, minVersion), слушать `timeout`.
 
-### 23. `trySendCommand` глотает любые ошибки
+### 23. `trySendCommand` глотает любые ошибки — **сделано в 1.5.0**
 
 В том числе баги библиотеки и таймауты. Минимум — логировать / принимать predicate, какие ошибки глотать.
 
-### 24. Зафиксировать версию proto
+### 24. Зафиксировать версию proto — **частично в 1.5.0** (`PROTO_VERSION`)
 
 В репозитории лежит snapshot `openapi-proto-messages-main` без номера релиза Spotware (сейчас у них релизы 90+).
 
@@ -231,7 +237,7 @@ Heartbeat уходит через `sendCommand`, то есть попадает 
 
 `uuid@8` + v1 (MAC/время). Достаточно `crypto.randomUUID()` (Node 16+).
 
-### 29. Документация
+### 29. Документация — **частично в 1.5.0**
 
 README есть, но нет:
 
@@ -242,7 +248,7 @@ README есть, но нет:
 
 `CHANGELOG` у всех 1.4.x стоит дата `03-02-2025` — поправить при следующих релизах.
 
-### 30. `safe-build` только для cmd.exe
+### 30. `safe-build` только для cmd.exe — **сделано в 1.5.0**
 
 `if exist "build" rmdir` непереносим. Заменить на `rimraf` / `node -e fs.rmSync`.
 
@@ -269,21 +275,17 @@ README есть, но нет:
 
 ## Предлагаемый порядок релизов
 
-### 1.5.0 (патч надёжности, без ломания API)
+### 1.5.0 (патч надёжности) — **выпущен**
 
-P0.1–P0.4, P0.6, P1.7–P1.8, P1.13, P1.15, P2.16 (минимум encoder + reconnect), P2.21.
+Сделано. Совместимо с ботом: можно убрать ручные `setInterval(heartbeat)`. `sendCommand` теперь реджектит `CTraderCommandError` (поля `errorCode`/`description` сохранены).
 
-Совместимо с ботом: можно обновить `@max89701/ctrader-layer` и убрать ручные `setInterval(heartbeat)`.
+### 1.6.0 (лимиты)
 
-### 1.6.0 (ошибки и лимиты)
-
-P1.9, P1.10, P1.11, P1.12, P1.14.
-
-Бот сможет выкинуть `ctrader-rate-limit-gate` и касты событий depth.
+Полноценная очередь rate limit (P1.10) вместо одного retry. Карта req→res для `sendCommand`. CI.
 
 ### 2.0.0 (ломающие)
 
-P0.5 (protobufjs 7), P2.18 (TS 5, без ttypescript), P2.19, P2.20, P3.26–P3.28.
+P0.5 (protobufjs 7), P2.18 (TS 5, без ttypescript), P3.26–P3.28.
 
 Миграция: сменить импорты, проверить сборку `moex-arbitrage-bot`, прогнать стаканы/свечи/ордера на demo.
 

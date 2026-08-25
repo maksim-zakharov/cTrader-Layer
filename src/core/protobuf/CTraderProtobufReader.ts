@@ -4,7 +4,8 @@ import { GenericObject } from "#utilities/GenericObject";
 const protobuf = require("protobufjs");
 
 /** Опции для загрузки proto-файлов */
-interface ProtoFileOption {
+export interface ProtoFileOption {
+    /** Путь к .proto файлу */
     file: string;
 }
 
@@ -52,6 +53,9 @@ export class CTraderProtobufReader {
     readonly #messages: Record<string, ProtobufMessageClass> = {};
     readonly #enums: Record<string, unknown> = {};
 
+    /**
+     * @param options - Список proto-файлов для загрузки
+     */
     public constructor (options: ProtoFileOption[]) {
         this.#params = options;
         this.#builder = undefined;
@@ -74,15 +78,37 @@ export class CTraderProtobufReader {
         return this.#wrap(payloadType, message, clientMsgId).encode();
     }
 
+    /**
+     * Декодирует кадр ProtoMessage. Неизвестный payloadType не бросает исключение.
+     * @param buffer - Тело кадра без 4-байтовой длины
+     */
     public decode (buffer: Buffer | Uint8Array): CTraderDecodedMessage {
         const ProtoMessage = this.getMessageByName("ProtoMessage");
-        const protoMessage = ProtoMessage.decode(buffer) as { payloadType: number; payload: Buffer | Uint8Array; clientMsgId: string };
-        const { payloadType, payload, clientMsgId, } = protoMessage;
+        const protoMessage = ProtoMessage.decode(buffer) as {
+            payloadType: number;
+            payload?: Buffer | Uint8Array;
+            clientMsgId?: string;
+        };
+        const {
+            payloadType, payload, clientMsgId,
+        } = protoMessage;
+        const normalizedClientMsgId = clientMsgId ?? "";
+
+        if (!this.hasPayloadType(payloadType)) {
+            return {
+                payload: {},
+                payloadType,
+                clientMsgId: normalizedClientMsgId,
+                unknown: true,
+            };
+        }
+
+        const payloadBuffer = payload ?? Buffer.alloc(0);
 
         return {
-            payload: this.getMessageByPayloadType(payloadType).decode(payload) as CTraderPayload,
+            payload: this.getMessageByPayloadType(payloadType).decode(payloadBuffer) as CTraderPayload,
             payloadType,
-            clientMsgId,
+            clientMsgId: normalizedClientMsgId,
         };
     }
 
@@ -96,12 +122,18 @@ export class CTraderProtobufReader {
         }) as ProtobufMessageInstance;
     }
 
+    /**
+     * Загружает proto-файлы в builder.
+     */
     public load (): void {
         this.#params.forEach((param: ProtoFileOption) => {
             this.#builder = protobuf.loadProtoFile(param.file, this.#builder) as ProtobufBuilder;
         });
     }
 
+    /**
+     * Строит карту сообщений и payloadType.
+     */
     public build (): void {
         const builder = this.#builder as ProtobufBuilder;
 
@@ -164,6 +196,10 @@ export class CTraderProtobufReader {
         };
     }
 
+    /**
+     * Ищет default payloadType у protobuf-сообщения.
+     * @param message - Reflect-описание сообщения
+     */
     public findPayloadType (message: ProtobufReflect): number | undefined {
         const field = message.children?.find((f: ProtobufReflect) => f.name === "payloadType");
 
@@ -175,15 +211,39 @@ export class CTraderProtobufReader {
     }
 
     /**
+     * Есть ли зарегистрированный класс для payloadType.
+     * @param payloadType - Числовой тип
+     */
+    public hasPayloadType (payloadType: number): boolean {
+        return this.#payloadTypes[payloadType] !== undefined;
+    }
+
+    /**
      * Возвращает класс сообщения по payload type.
      * @param payloadType - Числовой тип payload
      */
     public getMessageByPayloadType (payloadType: number): ProtobufMessageClass {
-        return this.#payloadTypes[payloadType].messageBuilded;
+        const entry = this.#payloadTypes[payloadType];
+
+        if (!entry) {
+            throw new Error(`Unknown payloadType: ${payloadType}`);
+        }
+
+        return entry.messageBuilded;
     }
 
+    /**
+     * Возвращает класс сообщения по имени.
+     * @param name - Имя protobuf-сообщения
+     */
     public getMessageByName (name: string): ProtobufMessageClass {
-        return this.#names[name].messageBuilded;
+        const entry = this.#names[name];
+
+        if (!entry) {
+            throw new Error(`Unknown message name: ${name}`);
+        }
+
+        return entry.messageBuilded;
     }
 
     /**

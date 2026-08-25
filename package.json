@@ -1,6 +1,6 @@
 {
     "name": "@max89701/ctrader-layer",
-    "version": "1.4.6",
+    "version": "1.5.0",
     "description": "A Node.js communication layer for the cTrader Open API.",
     "license": "MIT",
     "homepage": "https://github.com/maksim-zakharov/cTrader-Layer",
@@ -17,10 +17,14 @@
     },
     "scripts": {
         "lint": "eslint . --ext .ts,.js",
+        "test": "jest",
         "build": "ttsc",
-        "pull-proto": "bash scripts/pull-proto.sh && node scripts/unzip.js",
-        "safe-build": "(if exist \"build\" rmdir /s /q \"build\") && npm run build",
-        "prepublishOnly": "npm run safe-build"
+        "pull-proto": "node scripts/pull-proto.js",
+        "safe-build": "node -e \"require('fs').rmSync('build',{recursive:true,force:true})\" && npm run build",
+        "prepublishOnly": "npm run test && npm run safe-build"
+    },
+    "engines": {
+        "node": ">=14.17"
     },
     "main": "./build/entry/node/main.js",
     "types": "./build/entry/node/main.d.ts",
@@ -37,12 +41,15 @@
     },
     "devDependencies": {
         "@reiryoku/eslint-config-reiryoku": "^1.0.0",
+        "@types/jest": "^29.5.14",
         "@types/node": "^12.7.2",
         "@types/uuid": "8.3.0",
         "@typescript-eslint/eslint-plugin": "^4.26.0",
         "@typescript-eslint/parser": "^4.26.0",
         "adm-zip": "^0.5.16",
         "eslint": "^7.28.0",
+        "jest": "^29.7.0",
+        "ts-jest": "^29.4.12",
         "ttypescript": "^1.5.15",
         "typescript": "^4.4.4",
         "typescript-transform-paths": "^2.2.4"

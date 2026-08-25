@@ -6,4 +6,6 @@ export type CTraderSocketParameters = {
     host: string;
     /** Порт сервера */
     port: number;
+    /** Таймаут сокета (мс). 0 или undefined — без таймаута */
+    timeoutMs?: number;
 };

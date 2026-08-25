@@ -12,19 +12,20 @@
             "!/*": [ "./*" ],
             "#*": [ "./src/core/*" ]
         },
-        "removeComments": true,
+        "removeComments": false,
         "sourceMap": true,
+        "skipLibCheck": true,
         "strict": true,
         "target": "es6",
+        "types": ["node"],
         "plugins": [
             { "transform": "typescript-transform-paths" },
             { "transform": "typescript-transform-paths", "afterDeclarations": true }
         ]
     },
     "include": [
-        ".eslintrc.js",
-        "jest.config.js",
-        "**/*.ts"
+        "entry/**/*.ts",
+        "src/**/*.ts"
     ],
-    "exclude": [ "build", "node_modules" ]
+    "exclude": [ "build", "node_modules", "**/*.spec.ts", "src/core/__tests__/**" ]
 }

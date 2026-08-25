@@ -1,3 +1,22 @@
+1.5.0 - 25-08-2026
+===================
+* Переподключение слушает TLS-событие `close` (а не только `end`) — работает на ECONNRESET.
+* Heartbeat больше не создаёт висящие команды; авто-heartbeat каждые 25 с (`heartbeatIntervalMs`, 0 — выкл.).
+* Таймаут команд (`commandTimeoutMs`, по умолчанию 30 с), код `COMMAND_TIMEOUT`.
+* Неизвестный payloadType не роняет декодер: событие `unknownMessage`.
+* `CTraderCommandError` вместо «голого» payload при reject.
+* Состояние соединения: `state`, `isOpen`, `isConnecting`, событие `stateChange`.
+* `off` / `once` / `removeListener` нормализуют имя события так же, как `on`.
+* События жизненного цикла (`open`, `close`, `error`, …) больше не резолвятся как proto-имена.
+* Безлимитный reconnect: `maxReconnectAttempts: 0`; после исчерпания попыток эмитится `close`.
+* Jitter и потолок задержки reconnect (`reconnectJitter`, `maxReconnectDelayMs`).
+* HTTP-хелперы передают токен в `Authorization`, не в query.
+* Опциональный повтор при `BLOCKED_PAYLOAD_TYPE` (`rateLimitRetry`).
+* `CTraderEventMap`: Depth, AccountDisconnect, MarginCall, PnLChange, ErrorRes.
+* Кроссплатформенный `npm run pull-proto`; `safe-build` через Node.
+* EncoderDecoder декодирует пачку кадров циклом, без рекурсии.
+* Jest-тесты на фрейминг, команды, protobuf, сокет, reconnect, heartbeat, HTTP.
+
 1.4.6 - 03-02-2025
 ===================
 * Добавлен CTraderEventMap — маппинг имён событий на типы payload.

@@ -7,14 +7,18 @@ import { CTraderSocketParameters } from "#sockets/CTraderSocketParameters";
 export class CTraderSocket {
     readonly #host: string;
     readonly #port: number;
+    readonly #timeoutMs?: number;
     #socket?: tls.TLSSocket;
 
     /**
-     * @param parameters - Параметры подключения (host, port)
+     * @param parameters - Параметры подключения (host, port, timeoutMs)
      */
-    public constructor ({ host, port, }: CTraderSocketParameters) {
+    public constructor ({
+        host, port, timeoutMs,
+    }: CTraderSocketParameters) {
         this.#host = host;
         this.#port = port;
+        this.#timeoutMs = timeoutMs;
         this.#socket = undefined;
     }
 
@@ -30,26 +34,41 @@ export class CTraderSocket {
 
     /**
      * Устанавливает соединение с сервером.
+     * Предыдущий сокет уничтожается без события close (замена при reconnect).
      */
     public connect (): void {
-        // @ts-ignore
-        const socket = tls.connect(this.#port, this.#host, (): void => this.onOpen());
+        this.#destroySilent();
+
+        const socket = tls.connect({
+            host: this.#host,
+            port: this.#port,
+            servername: this.#host,
+        }, (): void => this.onOpen());
 
         socket.on("data", (data: Buffer): void => this.onData(data));
-        socket.on("end", (): void => this.onClose());
         socket.on("error", (err: Error): void => this.onError(err));
+        socket.on("close", (): void => {
+            if (this.#socket === socket) {
+                this.#socket = undefined;
+                this.onClose();
+            }
+        });
+
+        if (this.#timeoutMs && this.#timeoutMs > 0) {
+            socket.setTimeout(this.#timeoutMs);
+            socket.on("timeout", (): void => {
+                socket.destroy(new Error("Таймаут TLS-соединения"));
+            });
+        }
 
         this.#socket = socket;
     }
 
     /**
-     * Закрывает соединение.
+     * Закрывает соединение. Событие close сокета пробрасывается в onClose.
      */
     public close (): void {
-        if (this.#socket) {
-            this.#socket.destroy();
-            this.#socket = undefined;
-        }
+        this.#socket?.destroy();
     }
 
     /**
@@ -74,5 +93,15 @@ export class CTraderSocket {
 
     public onError (_err: Error): void {
         // Silence is golden.
+    }
+
+    #destroySilent (): void {
+        if (!this.#socket) {
+            return;
+        }
+
+        this.#socket.removeAllListeners();
+        this.#socket.destroy();
+        this.#socket = undefined;
     }
 }

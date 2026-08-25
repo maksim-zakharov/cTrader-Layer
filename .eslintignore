@@ -1,3 +1,8 @@
 build
 node_modules
 .idea
+jest.config.js
+scripts
+openapi-proto-messages-main
+**/*.spec.ts
+src/core/__tests__
