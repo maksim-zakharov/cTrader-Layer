@@ -2,6 +2,7 @@
 ===================
 * Улучшены Jest-тесты `CTraderConnection` / команд (стабильнее флейки, общие test-utils).
 * Мелкие правки конфигурации Jest.
+* Jest: `maxWorkers: 2` и `prepublishOnly --runInBand` — без OOM на Windows при публикации.
 
 1.5.0 - 25-08-2026
 ===================

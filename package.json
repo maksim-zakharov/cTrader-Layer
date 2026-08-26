@@ -21,7 +21,7 @@
         "build": "ttsc",
         "pull-proto": "node scripts/pull-proto.js",
         "safe-build": "node -e \"require('fs').rmSync('build',{recursive:true,force:true})\" && npm run build",
-        "prepublishOnly": "npm run test && npm run safe-build"
+        "prepublishOnly": "npm run test -- --runInBand && npm run safe-build"
     },
     "engines": {
         "node": ">=14.17"
