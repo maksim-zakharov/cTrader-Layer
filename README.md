@@ -12,7 +12,7 @@ Node.js транспорт для [cTrader Open API](https://help.ctrader.com/op
 npm install @max89701/ctrader-layer
 ```
 
-Требуется **Node.js 14.17+** (в 2.0 планируется `>=18`).
+Требуется **Node.js 18+**. С 2.0: `protobufjs@7`, TypeScript 5 toolchain (публичный API соединения без изменений).
 
 Пакет **dual**: CommonJS и ESM через `exports` (разные файлы `.js` / `.mjs` — без dual-package hazard).
 
@@ -225,26 +225,27 @@ const accounts = await CTraderConnection.getAccessTokenAccounts("access-token");
 npm run pull-proto
 ```
 
-## Миграция 1.x → 2.0 (черновик)
+## Миграция 1.x → 2.0
 
-2.0 — ломающий major (см. Linear / [BACKLOG.md](./BACKLOG.md)):
+**Сделано в 2.0.0:** `protobufjs@5` → `protobufjs@7`. Внутренний reader на `Root.loadSync` / `Type`; адаптер сообщений (`encode` / `decode` / `toBuffer`) и публичный API `CTraderConnection` без изменений.
 
-| Тема | 1.x | 2.0 (план) |
-|------|-----|------------|
-| Protobuf | `protobufjs@5` | `protobufjs@7` или `@bufbuild` |
-| Toolchain | TS 4.4 + ttypescript | TS 5 + обычный `tsc` |
-| Node | `>=14.17` | `>=18` |
-| `clientMsgId` | `uuid` v1 | `crypto.randomUUID()` |
-| Модули | dual CJS + ESM (`exports`) с 1.6 | bundler/toolchain без tsup (план) |
-| Типы | ручные карты | генерация из `.proto` |
+| Тема | 1.x | 2.0 |
+|------|-----|-----|
+| Protobuf | `protobufjs@5` | **`protobufjs@7`** (сделано) |
+| Toolchain | TS 4.4 + ttypescript | **TS 5 + tsc typecheck / tsup build** (сделано) |
+| Node | `>=14.17` | **`>=18`** (сделано) |
+| `clientMsgId` | `uuid` v1 | **`crypto.randomUUID()`** (сделано) |
+| Модули | dual CJS + ESM с 1.6 | без изменений в 2.0 |
+| Типы | ручные карты | генерация из `.proto` (план) |
 
-Что **не** должно ломаться по смыслу: `open` / `sendCommand` / события / reconnect handlers / `CTraderCommandError` с полями `errorCode` / `description` / `retryAfter`.
+Что **не** ломается по смыслу: `open` / `sendCommand` / события / reconnect handlers / `CTraderCommandError` (`errorCode` / `description` / `retryAfter`).
 
-Перед апгрейдом: обновить зависимость → `npm test` у потребителя → smoke auth + spots/depth на demo.
+Перед апгрейдом: `@max89701/ctrader-layer@^2` → `npm test` у потребителя → smoke auth + spots/depth на demo.
 
 ## Разработка
 
 ```bash
+npm run typecheck
 npm test
 npm run build
 npm run lint

@@ -1,6 +1,6 @@
 # Беклог @max89701/ctrader-layer
 
-Версия на момент обзора: **1.6.0**. Форк [Reiryoku ctrader-layer](https://github.com/reiryoku-trader/ctrader-layer): транспортный слой cTrader Open API (TLS + protobuf + команды/события).
+Версия на момент обзора: **2.0.0**. Форк [Reiryoku ctrader-layer](https://github.com/reiryoku-trader/ctrader-layer): транспортный слой cTrader Open API (TLS + protobuf + команды/события).
 
 Основной потребитель: **moex-arbitrage-bot** (`CtraderService`, `CtraderDepthQuotesService`, `CtraderTfConnectionPoolService`, `CtraderAccountConnection`). Часть логики, которой не хватает в слое, уже продублирована там — это сигнал, что её стоит поднять в библиотеку.
 
@@ -8,11 +8,13 @@
 
 **1.5.0 сделано:** P0.1–P0.4, P0.6; P1.7–P1.9, P1.11–P1.15; P1.10 частично (`rateLimitRetry`); P2.16, P2.19–P2.21; P2.22 частично (tls options + timeout); P2.23 (`trySendCommand` глотает только `CTraderCommandError`).
 
-**1.6.0 (частично):** P1.12 — command map; P3.29 — docs; P3.27 — dual CJS/ESM (MAK-98, раньше плана 2.0).
+**1.6.0:** P1.12 — command map; P3.29 — docs; P3.27 — dual CJS/ESM (MAK-98).
+
+**2.0.0:** P0.5 — protobufjs@7 (MAK-94); P3.28 — `crypto.randomUUID()` (MAK-96); P2.18 — TS 5 / Node ≥18 (MAK-95).
 
 **Дальше:** задачи в Linear [ctrader-layer](https://linear.app/maksim-zakharov/project/ctrader-layer-898108486d89) (`P-MAK-5`), эпик [MAK-86](https://linear.app/maksim-zakharov/issue/MAK-86/epic-refaktoring-max89701ctrader-layer-posle-150).
 
-Кратко: остаток 1.6 — P1.10 очередь лимитов, декомпозиция Connection, OAuth/proto; P0.5 / P2.18 / codegen → **2.0.0**.
+Кратко: остаток 1.6-трека — P1.10 очередь лимитов, OAuth/proto; декомпозиция Connection и toolchain 2.0 — сделаны; codegen — следующие релизы.
 
 ## Легенда приоритетов
 
@@ -62,11 +64,9 @@ Heartbeat уходит через `sendCommand`, то есть попадает 
 
 **Сделать:** `commandTimeoutMs` (дефолт, например 15–30 с), reject с кодом `COMMAND_TIMEOUT`, очистка из map.
 
-### 5. `protobufjs@5.0.1` (2016)
+### 5. `protobufjs@5.0.1` (2016) — **сделано в 2.0.0** (MAK-94)
 
-Старый API (`loadProtoFile` / builder), нет поддержки современных Node, известные уязвимости транзитивных зависимостей.
-
-**Сделать:** миграция на `protobufjs@7` (proto2 совместим) или `@bufbuild/protobuf`. Это ломающее изменение — планировать как 2.0.
+Миграция на `protobufjs@7`: `Root.loadSync` / `Type`, адаптер сообщений сохранён. `@bufbuild/protobuf` не выбран.
 
 ### 6. Скрипт обновления proto сломан — **сделано в 1.5.0**
 
@@ -166,16 +166,9 @@ Heartbeat уходит через `sendCommand`, то есть попадает 
 
 Нет `.github/workflows` у самого пакета. Нужны lint, test, build на PR; публикация в npm по тегу.
 
-### 18. Мёртвый toolchain
+### 18. Мёртвый toolchain — **сделано в 2.0.0** (MAK-95)
 
-| Сейчас | Проблема |
-|--------|----------|
-| TypeScript **4.4** + **ttypescript** | ttypescript заброшен, не работает с TS 5+ |
-| `typescript-transform-paths` | ради алиасов `#*` / `!*` |
-| target **ES6**, `@types/node` **12** | не соответствует Node 18/20, на которых крутится бот |
-| ESLint 7 + `@reiryoku/eslint-config-reiryoku` | устарело |
-
-**Сделать:** TS 5.x, `tsc` без ttypescript, алиасы через `paths` + bundler **или** убрать алиасы (относительные импорты). `engines.node: ">=18"`. ESLint 9 / flat config.
+TS 5 + `tsc --noEmit`, tsup для emit, алиасы `#*` через paths + tsup/Jest, `engines.node: ">=18"`, ESLint 9 flat. Без ttypescript.
 
 ### 19. `removeComments: true` вырезает JSDoc из `.d.ts` — **сделано в 1.5.0**
 
@@ -237,9 +230,9 @@ Heartbeat уходит через `sendCommand`, то есть попадает 
 
 Сборка `tsup`: `build/main.js` + `build/main.mjs`, `package.json` `exports`, `verify:exports` в CI. Расширения разные — dual-package hazard отсутствует.
 
-### 28. uuid v1
+### 28. uuid v1 — **сделано в 2.0.0** (MAK-96)
 
-`uuid@8` + v1 (MAC/время). Достаточно `crypto.randomUUID()` (Node 16+).
+`clientMsgId` через `crypto.randomUUID()` (Node ≥14.17); зависимости `uuid` / `@types/uuid` удалены.
 
 ### 29. Документация — **сделано в 1.6.0** (MAK-92)
 
@@ -284,11 +277,11 @@ CHANGELOG: формат даты для новых релизов; у 1.4.x да
 
 Карта req→res для `sendCommand` — **сделано** (P1.12). Осталось: полноценная очередь rate limit (P1.10), декомпозиция Connection, OAuth/proto/docs.
 
-### 2.0.0 (ломающие)
+### 2.0.0 (protobufjs 7) — **выпущен** (MAK-94)
 
-P0.5 (protobufjs 7), P2.18 (TS 5, без ttypescript), P3.26 / P3.28. Dual CJS/ESM (P3.27) уже в 1.6.0.
+P0.5, P2.18 и P3.28 сделаны. Осталось на следующие релизы: P3.26. Dual CJS/ESM (P3.27) уже в 1.6.0.
 
-Миграция: сменить импорты, проверить сборку `moex-arbitrage-bot`, прогнать стаканы/свечи/ордера на demo.
+Миграция потребителя: `@max89701/ctrader-layer@^2` → сборка `moex-arbitrage-bot` → smoke стаканы/свечи/ордера на demo.
 
 ---
 

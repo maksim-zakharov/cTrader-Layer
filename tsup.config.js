@@ -63,11 +63,11 @@ module.exports = {
     sourcemap: true,
     clean: true,
     outDir: "build",
-    target: "node14",
+    target: "node18",
     platform: "node",
     splitting: false,
     treeshake: true,
-    external: [ "axios", "protobufjs", "uuid", ],
+    external: [ "axios", "protobufjs", ],
     tsconfig: "tsconfig.build.json",
     outExtension ({ format, }) {
         return {

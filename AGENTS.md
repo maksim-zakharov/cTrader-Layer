@@ -2,7 +2,7 @@
 
 Документ описывает пакет **@max89701/ctrader-layer** для передачи контекста при доработке.
 
-Подробный список работ: [BACKLOG.md](./BACKLOG.md). Текущая версия: **1.6.0**.
+Подробный список работ: [BACKLOG.md](./BACKLOG.md). Текущая версия: **2.0.0**.
 
 ---
 
@@ -30,7 +30,7 @@ Node.js-слой для [cTrader Open API](https://help.ctrader.com/open-api/): 
 
 Форк [reiryoku-trader/ctrader-layer](https://github.com/reiryoku-trader/ctrader-layer). Публикация: npm `@max89701/ctrader-layer`.
 
-**Стек:** TypeScript 4.4, protobufjs 5.0.1, axios, uuid. Сборка: `npm run build` (**tsup** → CJS `build/main.js` + ESM `build/main.mjs`). Легаси `npm run build:ttsc` (ttypescript) оставлен для отладки. Тесты: `npm test` (Jest). Проверка exports: `npm run verify:exports`. Lint: `npm run lint`.
+**Стек:** TypeScript **5**, protobufjs **7**, axios; `clientMsgId` через `crypto.randomUUID()`. Node `>=18`. Сборка: `npm run build` (**tsup** → CJS/ESM). Typecheck: `npm run typecheck` (`tsc --noEmit`, без ttypescript). Алиасы `#*` / `!/` — paths в tsconfig + плагин tsup + Jest `moduleNameMapper`. Тесты: `npm test`. Lint: ESLint 9 flat (`eslint.config.js`).
 
 ---
 
@@ -41,7 +41,10 @@ cTrader-Layer/
 ├── entry/node/main.ts          # entry для tsup
 ├── tsup.config.js              # dual CJS+ESM
 ├── src/core/
-│   ├── CTraderConnection.ts    # ядро
+│   ├── CTraderConnection.ts    # фасад
+│   ├── ReconnectController.ts  # @internal reconnect
+│   ├── HeartbeatScheduler.ts   # @internal heartbeat
+│   ├── CtraderHttpClient.ts    # @internal Spotware HTTP
 │   ├── CTraderCommandError.ts
 │   ├── sockets/                # TLS, событие close
 │   ├── encoder-decoder/        # 4 байта длины + payload
@@ -61,7 +64,7 @@ cTrader-Layer/
 
 ---
 
-## 3. Контракт 1.6.0
+## 3. Контракт 2.0.0
 
 ```ts
 const connection = new CTraderConnection({
@@ -105,6 +108,6 @@ HTTP: Bearer-заголовок, не query string.
 - Слой остаётся тонким: не тащить Nest, RxJS, бизнес-логику ордеров.
 - Логи и JSDoc — на русском.
 - Не ломать 1.x без нужды: `CTraderCommandError` сохраняет `errorCode` / `description`.
-- Ломающие изменения (protobufjs 7, TS 5) — только major 2.0.
+- protobufjs 7, TS 5 и Node ≥18 уже в 2.0; не тащить ttypescript обратно.
 - Новые фичи — со unit-тестами (`npm test`). Имена тестов на русском.
 - После правок — `npm test` и `npm run build`.

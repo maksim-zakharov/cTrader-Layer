@@ -4,6 +4,16 @@
   * пункт на русском; дата — день релиза (не копировать шаблон).
 У записей 1.4.x дата `03-02-2025` — наследие серии патчей; новые релизы — фактическая дата.
 
+2.0.0 - 07-10-2026
+===================
+* Миграция `protobufjs@5` → `protobufjs@7` (`Root.loadSync` / `Type` вместо builder/`loadProtoFile`).
+* `CTraderProtobufReader` переписан под API v7; публичный контракт адаптера (`new` / `decode` / `toBuffer`) сохранён.
+* Удалены shim-типы protobufjs@5; ESM-сборка импортирует только default export protobufjs (CJS interop).
+* `clientMsgId`: `uuid` v1 заменён на `crypto.randomUUID()`; зависимости `uuid` / `@types/uuid` удалены; `@types/node` → ^14.18 (типы `randomUUID`).
+* Внутренняя декомпозиция `CTraderConnection`: `ReconnectController`, `HeartbeatScheduler`, `CtraderHttpClient` (не экспортируются из пакета).
+* Toolchain: TypeScript **5.x**, `engines.node: ">=18"`, без ttypescript / typescript-transform-paths; алиасы `#*` через tsup + Jest; ESLint 9 flat config; `npm run typecheck`.
+* Версия пакета 2.0.0 (ломающие зависимости; публичный API `CTraderConnection` без изменений).
+
 1.6.0 - 07-10-2026
 ===================
 * `CTraderCommandMapTypes`: карта *Req → { request, response } для прод-команд (auth, trader, reconcile, symbols, spots/trendbars/depth, new order/close, deals, cashflow).

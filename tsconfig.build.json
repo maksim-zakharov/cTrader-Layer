@@ -7,8 +7,7 @@
     },
     "include": [
         "entry/**/*.ts",
-        "src/**/*.ts",
-        "src/shims/**/*.d.ts"
+        "src/**/*.ts"
     ],
     "exclude": [
         "build",

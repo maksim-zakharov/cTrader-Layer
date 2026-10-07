@@ -1,7 +1,6 @@
+import { randomUUID } from "crypto";
 import { EventEmitter } from "events";
 import * as path from "path";
-import { v1 } from "uuid";
-import axios from "axios";
 import { CTraderCommandMap } from "#commands/CTraderCommandMap";
 import { CTraderEncoderDecoder } from "#encoder-decoder/CTraderEncoderDecoder";
 import { CTraderSocket } from "#sockets/CTraderSocket";
@@ -23,15 +22,16 @@ import {
     CTraderConnectionParameters,
     CTraderConnectionState,
     CTraderReconnectHandler,
-    computeReconnectDelayMs,
     normalizeConnectionParameters,
 } from "#CTraderConnectionParameters";
 import { CTraderCommandError } from "#CTraderCommandError";
 import { CONNECTION_EVENT_NAMES } from "#connection.constants";
 import { resolveProtoDir } from "#resolve-proto-dir";
+import { HeartbeatScheduler } from "#HeartbeatScheduler";
+import { ReconnectController } from "#ReconnectController";
+import { CtraderHttpClient } from "#CtraderHttpClient";
 
 // Реализация on/off должна быть шире всех overload'ов (включая EventEmitter.on("error")).
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ConnectionEventListener = (...args: any[]) => void;
 
 /**
@@ -44,14 +44,12 @@ export class CTraderConnection extends EventEmitter {
     readonly #protobufReader: CTraderProtobufReader;
     readonly #socket: CTraderSocket;
     readonly #params: ReturnType<typeof normalizeConnectionParameters>;
-    readonly #reconnectHandlers: CTraderReconnectHandler[] = [];
+    readonly #heartbeat: HeartbeatScheduler;
+    readonly #reconnect: ReconnectController;
     #state: CTraderConnectionState = "idle";
     #resolveConnectionPromise?: () => void;
     #rejectConnectionPromise?: (reason?: Error) => void;
     #openPromise?: Promise<void>;
-    #reconnectAttempts = 0;
-    #reconnectTimeout?: ReturnType<typeof setTimeout>;
-    #heartbeatInterval?: ReturnType<typeof setInterval>;
     #isClosing = false;
     #closeEmitted = false;
 
@@ -73,6 +71,30 @@ export class CTraderConnection extends EventEmitter {
             host,
             port,
             timeoutMs: parameters.tlsTimeoutMs,
+        });
+        this.#heartbeat = new HeartbeatScheduler(this.#params.heartbeatIntervalMs, (): void => {
+            this.sendHeartbeat();
+        });
+        this.#reconnect = new ReconnectController({
+            maxReconnectAttempts: this.#params.maxReconnectAttempts,
+            reconnectDelayMs: this.#params.reconnectDelayMs,
+            maxReconnectDelayMs: this.#params.maxReconnectDelayMs,
+            reconnectJitter: this.#params.reconnectJitter,
+        }, {
+            isClosing: (): boolean => this.#isClosing,
+            setState: (state): void => this.#setState(state),
+            onReconnecting: (info): void => {
+                this.emit("reconnecting", info);
+            },
+            onReconnectFailed: (error): void => {
+                this.emit("reconnectFailed", error);
+            },
+            onReconnected: (): void => {
+                this.emit("reconnected");
+            },
+            onCloseOnce: (): void => this.#emitCloseOnce(),
+            open: (): Promise<void> => this.open(),
+            getHandlerTarget: (): Parameters<CTraderReconnectHandler>[0] => this,
         });
 
         if (!dependencies.protobufReader) {
@@ -213,8 +235,8 @@ export class CTraderConnection extends EventEmitter {
         }
 
         this.#isClosing = true;
-        this.#stopHeartbeat();
-        this.#clearReconnectTimeout();
+        this.#heartbeat.stop();
+        this.#reconnect.clearScheduled();
         this.#rejectPendingCommands("CONNECTION_CLOSED", "Соединение закрыто");
         this.#setState("closed");
         this.#socket.close();
@@ -227,7 +249,7 @@ export class CTraderConnection extends EventEmitter {
      * @param handler - Асинхронная функция, выполняющая повторную аутентификацию и подписки
      */
     public addReconnectHandler (handler: CTraderReconnectHandler): void {
-        this.#reconnectHandlers.push(handler);
+        this.#reconnect.addHandler(handler);
     }
 
     /**
@@ -235,11 +257,7 @@ export class CTraderConnection extends EventEmitter {
      * @param handler - Обработчик для удаления
      */
     public removeReconnectHandler (handler: CTraderReconnectHandler): void {
-        const index = this.#reconnectHandlers.indexOf(handler);
-
-        if (index !== -1) {
-            this.#reconnectHandlers.splice(index, 1);
-        }
+        this.#reconnect.removeHandler(handler);
     }
 
     /**
@@ -293,7 +311,7 @@ export class CTraderConnection extends EventEmitter {
     async #sendCommandInternal<TRes extends GenericObject> (payloadType: string | number,
         data: GenericObject | undefined,
         allowRetry: boolean): Promise<TRes> {
-        const clientMsgId: string = v1();
+        const clientMsgId: string = randomUUID();
         const normalizedPayloadType: number = typeof payloadType === "number"
             ? payloadType
             : this.getPayloadTypeByName(payloadType);
@@ -329,9 +347,9 @@ export class CTraderConnection extends EventEmitter {
     }
 
     #onOpen (): void {
-        this.#reconnectAttempts = 0;
+        this.#reconnect.resetAttempts();
         this.#setState("open");
-        this.#startHeartbeat();
+        this.#heartbeat.start();
 
         if (this.#resolveConnectionPromise) {
             this.#resolveConnectionPromise();
@@ -384,7 +402,7 @@ export class CTraderConnection extends EventEmitter {
     }
 
     #onClose (): void {
-        this.#stopHeartbeat();
+        this.#heartbeat.stop();
         this.#openPromise = undefined;
 
         if (this.#rejectConnectionPromise) {
@@ -397,7 +415,7 @@ export class CTraderConnection extends EventEmitter {
 
         if (!this.#isClosing && this.#params.autoReconnect) {
             this.#setState("reconnecting");
-            this.#scheduleReconnect();
+            this.#reconnect.schedule();
 
             return;
         }
@@ -415,95 +433,6 @@ export class CTraderConnection extends EventEmitter {
             this.#rejectConnectionPromise(err);
             this.#resolveConnectionPromise = undefined;
             this.#rejectConnectionPromise = undefined;
-        }
-    }
-
-    #scheduleReconnect (): void {
-        if (this.#reconnectTimeout !== undefined || this.#isClosing) {
-            return;
-        }
-
-        const maxAttempts = this.#params.maxReconnectAttempts;
-        const unlimited = maxAttempts === 0;
-
-        if (!unlimited && this.#reconnectAttempts >= maxAttempts) {
-            this.#setState("closed");
-            this.emit("reconnectFailed", new Error(`Не удалось переподключиться после ${maxAttempts} попыток`));
-            this.#emitCloseOnce();
-
-            return;
-        }
-
-        this.#reconnectAttempts += 1;
-        const delayMs = computeReconnectDelayMs(this.#reconnectAttempts,
-            this.#params.reconnectDelayMs,
-            this.#params.maxReconnectDelayMs,
-            this.#params.reconnectJitter);
-        const info: CTraderReconnectingInfo = {
-            attempt: this.#reconnectAttempts,
-            maxAttempts: unlimited ? Number.POSITIVE_INFINITY : maxAttempts,
-            delayMs,
-        };
-
-        this.emit("reconnecting", info);
-
-        this.#reconnectTimeout = setTimeout(() => {
-            this.#reconnectTimeout = undefined;
-            void this.#attemptReconnect();
-        }, delayMs);
-    }
-
-    async #attemptReconnect (): Promise<void> {
-        if (this.#isClosing) {
-            return;
-        }
-
-        try {
-            await this.open();
-            await this.#runReconnectHandlers();
-            this.emit("reconnected");
-        }
-        catch {
-            if (!this.#isClosing) {
-                this.#scheduleReconnect();
-            }
-        }
-    }
-
-    async #runReconnectHandlers (): Promise<void> {
-        for (const handler of this.#reconnectHandlers) {
-            await handler(this);
-        }
-    }
-
-    #startHeartbeat (): void {
-        this.#stopHeartbeat();
-        const interval = this.#params.heartbeatIntervalMs;
-
-        if (!interval || interval <= 0) {
-            return;
-        }
-
-        this.#heartbeatInterval = setInterval(() => {
-            this.sendHeartbeat();
-        }, interval);
-
-        if (typeof this.#heartbeatInterval.unref === "function") {
-            this.#heartbeatInterval.unref();
-        }
-    }
-
-    #stopHeartbeat (): void {
-        if (this.#heartbeatInterval) {
-            clearInterval(this.#heartbeatInterval);
-            this.#heartbeatInterval = undefined;
-        }
-    }
-
-    #clearReconnectTimeout (): void {
-        if (this.#reconnectTimeout) {
-            clearTimeout(this.#reconnectTimeout);
-            this.#reconnectTimeout = undefined;
         }
     }
 
@@ -561,11 +490,7 @@ export class CTraderConnection extends EventEmitter {
      * @returns Данные профиля
      */
     public static async getAccessTokenProfile (accessToken: string): Promise<GenericObject> {
-        const response = await axios.get("https://api.spotware.com/connect/profile", {
-            headers: CTraderConnection.#authorizationHeaders(accessToken),
-        });
-
-        return response.data as GenericObject;
+        return CtraderHttpClient.getAccessTokenProfile(accessToken);
     }
 
     /**
@@ -574,19 +499,6 @@ export class CTraderConnection extends EventEmitter {
      * @returns Массив аккаунтов
      */
     public static async getAccessTokenAccounts (accessToken: string): Promise<GenericObject[]> {
-        const response = await axios.get("https://api.spotware.com/connect/tradingaccounts", {
-            headers: CTraderConnection.#authorizationHeaders(accessToken),
-        });
-        const data = response.data;
-
-        if (!Array.isArray(data)) {
-            return [];
-        }
-
-        return data as GenericObject[];
-    }
-
-    static #authorizationHeaders (accessToken: string): { Authorization: string } {
-        return { Authorization: `Bearer ${accessToken}`, };
+        return CtraderHttpClient.getAccessTokenAccounts(accessToken);
     }
 }

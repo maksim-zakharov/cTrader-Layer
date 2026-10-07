@@ -5,12 +5,13 @@
         "incremental": true,
         "inlineSources": true,
         "module": "commonjs",
+        "moduleResolution": "node",
         "noImplicitReturns": true,
         "noImplicitOverride": true,
         "outDir": "build",
         "paths": {
-            "!/*": [ "./*" ],
-            "#*": [ "./src/core/*" ]
+            "!/*": ["./*"],
+            "#*": ["./src/core/*"]
         },
         "removeComments": false,
         "sourceMap": true,
@@ -18,17 +19,18 @@
         "strict": true,
         "esModuleInterop": true,
         "allowSyntheticDefaultImports": true,
-        "target": "es6",
-        "types": ["node"],
-        "plugins": [
-            { "transform": "typescript-transform-paths" },
-            { "transform": "typescript-transform-paths", "afterDeclarations": true }
-        ]
+        "target": "ES2022",
+        "lib": ["ES2022"],
+        "types": ["node"]
     },
     "include": [
         "entry/**/*.ts",
-        "src/**/*.ts",
-        "src/shims/**/*.d.ts"
+        "src/**/*.ts"
     ],
-    "exclude": [ "build", "node_modules", "**/*.spec.ts", "src/core/__tests__/**" ]
+    "exclude": [
+        "build",
+        "node_modules",
+        "**/*.spec.ts",
+        "src/core/__tests__/**"
+    ]
 }
