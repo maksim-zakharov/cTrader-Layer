@@ -3,6 +3,7 @@ import * as path from "path";
 
 /**
  * Ищет каталог bundled proto-файлов Spotware.
+ * Обходит родителей от каталога модуля и от cwd — работает и в CJS, и в ESM-бандле.
  * @param explicit - Явно заданный путь
  * @returns Абсолютный путь к openapi-proto-messages-main
  */
@@ -11,15 +12,29 @@ export function resolveProtoDir (explicit?: string): string {
         return path.resolve(explicit);
     }
 
-    const candidates = [
-        path.resolve(__dirname, "../../openapi-proto-messages-main"),
-        path.resolve(__dirname, "../../../openapi-proto-messages-main"),
-        path.resolve(process.cwd(), "openapi-proto-messages-main"),
-    ];
+    const starts: string[] = [ process.cwd(), ];
 
-    for (const dir of candidates) {
-        if (fs.existsSync(path.join(dir, "OpenApiMessages.proto"))) {
-            return dir;
+    if (typeof __dirname !== "undefined") {
+        starts.unshift(__dirname);
+    }
+
+    for (const start of starts) {
+        let current = start;
+
+        for (let depth = 0; depth < 10; depth++) {
+            const candidate = path.join(current, "openapi-proto-messages-main");
+
+            if (fs.existsSync(path.join(candidate, "OpenApiMessages.proto"))) {
+                return candidate;
+            }
+
+            const parent = path.dirname(current);
+
+            if (parent === current) {
+                break;
+            }
+
+            current = parent;
         }
     }
 

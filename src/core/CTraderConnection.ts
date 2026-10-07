@@ -1,4 +1,4 @@
-import * as EventEmitter from "events";
+import { EventEmitter } from "events";
 import * as path from "path";
 import { v1 } from "uuid";
 import axios from "axios";
@@ -8,6 +8,9 @@ import { CTraderSocket } from "#sockets/CTraderSocket";
 import { GenericObject } from "#utilities/GenericObject";
 import { CTraderProtobufReader } from "#protobuf/CTraderProtobufReader";
 import type {
+    CTraderCommandMapTypes,
+    CTraderCommandRequestOf,
+    CTraderCommandResponseOf,
     CTraderDecodedMessage,
     CTraderEncodable,
     CTraderEventMap,
@@ -115,27 +118,35 @@ export class CTraderConnection extends EventEmitter {
 
     /**
      * Отправляет команду на сервер и ожидает ответ.
-     * @param payloadType - Имя или числовой идентификатор типа сообщения
+     * Для имён из {@link CTraderCommandMapTypes} тип ответа выводится автоматически.
+     * @param payloadType - Имя *Req или числовой payload type
      * @param data - Данные команды
      * @returns Promise с ответом сервера
      * @throws {CTraderCommandError} при ошибке сервера, таймауте или закрытии соединения
      */
+    async sendCommand<K extends keyof CTraderCommandMapTypes> (payloadType: K,
+        data?: CTraderCommandRequestOf<K>): Promise<CTraderCommandResponseOf<K>>;
     async sendCommand<TRes extends GenericObject = GenericObject> (payloadType: string | number,
-        data?: GenericObject): Promise<TRes> {
-        return this.#sendCommandInternal<TRes>(payloadType, data, true);
+        data?: GenericObject): Promise<TRes>;
+    async sendCommand (payloadType: string | number, data?: GenericObject): Promise<GenericObject> {
+        return this.#sendCommandInternal(payloadType, data, true);
     }
 
     /**
      * Отправляет команду без выброса CTraderCommandError.
      * Прочие исключения пробрасываются.
-     * @param payloadType - Имя или числовой идентификатор типа
+     * @param payloadType - Имя *Req или числовой payload type
      * @param data - Данные команды
      * @returns Promise с ответом или undefined при ошибке команды
      */
+    async trySendCommand<K extends keyof CTraderCommandMapTypes> (payloadType: K,
+        data?: CTraderCommandRequestOf<K>): Promise<CTraderCommandResponseOf<K> | undefined>;
     async trySendCommand<TRes extends GenericObject = GenericObject> (payloadType: string | number,
-        data?: GenericObject): Promise<TRes | undefined> {
+        data?: GenericObject): Promise<TRes | undefined>;
+    async trySendCommand (payloadType: string | number,
+        data?: GenericObject): Promise<GenericObject | undefined> {
         try {
-            return await this.sendCommand<TRes>(payloadType, data);
+            return await this.sendCommand(payloadType, data);
         }
         catch (error) {
             if (error instanceof CTraderCommandError) {

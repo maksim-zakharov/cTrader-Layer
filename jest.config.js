@@ -13,7 +13,4 @@ module.exports = {
     },
     clearMocks: true,
     restoreMocks: true,
-    // protobufjs + несколько воркеров на Windows → OOM (Zone Allocation failed)
-    maxWorkers: 2,
-    workerIdleMemoryLimit: "512MB",
 };

@@ -1,7 +1,6 @@
 import type { CTraderDecodedMessage, CTraderPayload } from "#types";
 import { GenericObject } from "#utilities/GenericObject";
-
-const protobuf = require("protobufjs");
+import protobuf from "protobufjs";
 
 /** Опции для загрузки proto-файлов */
 export interface ProtoFileOption {

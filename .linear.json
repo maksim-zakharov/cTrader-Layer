@@ -1,0 +1,33 @@
+{
+  "product": "@max89701/ctrader-layer",
+  "repo": "https://github.com/maksim-zakharov/cTrader-Layer",
+  "workspace": "maksim-zakharov",
+  "team": {
+    "key": "MAK",
+    "name": "Maksim Zakharov",
+    "id": "4035a4b5-6905-452c-bdda-9a14b85d345e"
+  },
+  "projects": {
+    "ctraderLayer": {
+      "id": "P-MAK-5",
+      "uuid": "f2d020c5-9d7b-4221-bfda-59e2c6505531",
+      "name": "ctrader-layer",
+      "url": "https://linear.app/maksim-zakharov/project/ctrader-layer-898108486d89",
+      "package": "@max89701/ctrader-layer"
+    }
+  },
+  "related": {
+    "ctraderServer": {
+      "id": "P-MAK-3",
+      "name": "ctrader-server",
+      "url": "https://linear.app/maksim-zakharov/project/ctrader-server-92f6adc944fb",
+      "note": "Основной потребитель слоя (moex-arbitrage-bot)"
+    }
+  },
+  "routing": {
+    "default": "ctraderLayer",
+    "layer": "ctraderLayer",
+    "transport": "ctraderLayer",
+    "note": "Задачи пакета — только в ctrader-layer. Правки бота под новую версию — в ctrader-server."
+  }
+}

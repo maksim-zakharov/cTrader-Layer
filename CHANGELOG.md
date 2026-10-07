@@ -1,8 +1,20 @@
-1.5.1 - 26-08-2026
+Формат записи (с 1.6.0):
+  X.Y.Z - DD-MM-YYYY
+  ===================
+  * пункт на русском; дата — день релиза (не копировать шаблон).
+У записей 1.4.x дата `03-02-2025` — наследие серии патчей; новые релизы — фактическая дата.
+
+1.6.0 - 07-10-2026
 ===================
-* Улучшены Jest-тесты `CTraderConnection` / команд (стабильнее флейки, общие test-utils).
-* Мелкие правки конфигурации Jest.
-* Jest: `maxWorkers: 2` и `prepublishOnly --runInBand` — без OOM на Windows при публикации.
+* `CTraderCommandMapTypes`: карта *Req → { request, response } для прод-команд (auth, trader, reconcile, symbols, spots/trendbars/depth, new order/close, deals, cashflow).
+* Overload `sendCommand` / `trySendCommand`: по имени из карты тип ответа выводится без `as`; неизвестные имена и числовой payloadType остаются `GenericObject` / generic `TRes`.
+* Module augmentation для расширения карты команд (как у `CTraderEventMap`).
+* Экспорт дескрипторов и payload-типов команд из пакета.
+* README: хосты demo/live, лимиты Spotware (50/5 req/s, heartbeat ≤10 с), единый пример open→auth→reconnect, черновик миграции 1.x→2.0.
+* Dual package: сборка tsup → `build/main.js` (CJS) + `build/main.mjs` (ESM), поле `exports`; типы `main.d.ts` / `main.d.mts`.
+* `resolveProtoDir` ищет proto обходом родителей (совместимо с бандлом).
+* Импорт `EventEmitter` из `events` как named; protobufjs — default import + shim-типы.
+* Smoke `npm run verify:exports` (require + import) в CI / prepublish.
 
 1.5.0 - 25-08-2026
 ===================

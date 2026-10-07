@@ -16,6 +16,8 @@
         "sourceMap": true,
         "skipLibCheck": true,
         "strict": true,
+        "esModuleInterop": true,
+        "allowSyntheticDefaultImports": true,
         "target": "es6",
         "types": ["node"],
         "plugins": [
@@ -25,7 +27,8 @@
     },
     "include": [
         "entry/**/*.ts",
-        "src/**/*.ts"
+        "src/**/*.ts",
+        "src/shims/**/*.d.ts"
     ],
     "exclude": [ "build", "node_modules", "**/*.spec.ts", "src/core/__tests__/**" ]
 }

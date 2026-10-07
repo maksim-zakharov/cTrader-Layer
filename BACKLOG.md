@@ -1,6 +1,6 @@
 # Беклог @max89701/ctrader-layer
 
-Версия на момент обзора: **1.5.1**. Форк [Reiryoku ctrader-layer](https://github.com/reiryoku-trader/ctrader-layer): транспортный слой cTrader Open API (TLS + protobuf + команды/события).
+Версия на момент обзора: **1.6.0**. Форк [Reiryoku ctrader-layer](https://github.com/reiryoku-trader/ctrader-layer): транспортный слой cTrader Open API (TLS + protobuf + команды/события).
 
 Основной потребитель: **moex-arbitrage-bot** (`CtraderService`, `CtraderDepthQuotesService`, `CtraderTfConnectionPoolService`, `CtraderAccountConnection`). Часть логики, которой не хватает в слое, уже продублирована там — это сигнал, что её стоит поднять в библиотеку.
 
@@ -8,7 +8,11 @@
 
 **1.5.0 сделано:** P0.1–P0.4, P0.6; P1.7–P1.9, P1.11–P1.15; P1.10 частично (`rateLimitRetry`); P2.16, P2.19–P2.21; P2.22 частично (tls options + timeout); P2.23 (`trySendCommand` глотает только `CTraderCommandError`).
 
-**Дальше:** P0.5 / P2.18 → 2.0; P1.10 очередь лимитов; P2.17 CI; P3.
+**1.6.0 (частично):** P1.12 — command map; P3.29 — docs; P3.27 — dual CJS/ESM (MAK-98, раньше плана 2.0).
+
+**Дальше:** задачи в Linear [ctrader-layer](https://linear.app/maksim-zakharov/project/ctrader-layer-898108486d89) (`P-MAK-5`), эпик [MAK-86](https://linear.app/maksim-zakharov/issue/MAK-86/epic-refaktoring-max89701ctrader-layer-posle-150).
+
+Кратко: остаток 1.6 — P1.10 очередь лимитов, декомпозиция Connection, OAuth/proto; P0.5 / P2.18 / codegen → **2.0.0**.
 
 ## Легенда приоритетов
 
@@ -118,7 +122,7 @@ Heartbeat уходит через `sendCommand`, то есть попадает 
 
 **Сделать:** типы 1:1 с текущим proto; генерировать из `.proto` (см. P2).
 
-### 12. Типизация `sendCommand` — **частично в 1.5.0** (`sendCommand<TRes>`)
+### 12. Типизация `sendCommand` — **сделано в 1.6.0** (`CTraderCommandMapTypes` + overload)
 
 Сейчас `Promise<GenericObject>`. Потребитель везде кастит `as ProtoOATraderRes` и т.д.
 
@@ -229,24 +233,21 @@ Heartbeat уходит через `sendCommand`, то есть попадает 
 
 **Сделать:** `ts-proto` / `protobuf-ts` в `npm run generate:types`, экспорт enum’ов (`ProtoOAPayloadType`, `ProtoOAExecutionType`, …).
 
-### 27. Dual package CJS + ESM
+### 27. Dual package CJS + ESM — **сделано в 1.6.0** (MAK-98)
 
-Сейчас только CommonJS. Для новых Nest/Vite-потребителей — `"exports"` с `require`/`import`.
+Сборка `tsup`: `build/main.js` + `build/main.mjs`, `package.json` `exports`, `verify:exports` в CI. Расширения разные — dual-package hazard отсутствует.
 
 ### 28. uuid v1
 
 `uuid@8` + v1 (MAC/время). Достаточно `crypto.randomUUID()` (Node 16+).
 
-### 29. Документация — **частично в 1.5.0**
+### 29. Документация — **сделано в 1.6.0** (MAK-92)
 
-README есть, но нет:
+README: хосты demo/live, лимиты Spotware, единый пример open→auth→heartbeat/reconnect, черновик миграции 1.x→2.0, параметры `autoReconnect` / `heartbeatIntervalMs` / `commandTimeoutMs` / `rateLimitRetry`.
 
-- ограничений Open API (лимиты, demo/live хосты, 30 с heartbeat)
-- таблицы payloadType
-- миграции 1.x → 2.x
-- примера с autoReconnect + heartbeat + auth (сейчас heartbeat и reconnect разнесены)
+CHANGELOG: формат даты для новых релизов; у 1.4.x дата `03-02-2025` оставлена как наследие.
 
-`CHANGELOG` у всех 1.4.x стоит дата `03-02-2025` — поправить при следующих релизах.
+Опционально позже: таблица payloadType (после codegen в 2.0).
 
 ### 30. `safe-build` только для cmd.exe — **сделано в 1.5.0**
 
@@ -279,13 +280,13 @@ README есть, но нет:
 
 Сделано. Совместимо с ботом: можно убрать ручные `setInterval(heartbeat)`. `sendCommand` теперь реджектит `CTraderCommandError` (поля `errorCode`/`description` сохранены).
 
-### 1.6.0 (лимиты)
+### 1.6.0 (лимиты + DX)
 
-Полноценная очередь rate limit (P1.10) вместо одного retry. Карта req→res для `sendCommand`. CI.
+Карта req→res для `sendCommand` — **сделано** (P1.12). Осталось: полноценная очередь rate limit (P1.10), декомпозиция Connection, OAuth/proto/docs.
 
 ### 2.0.0 (ломающие)
 
-P0.5 (protobufjs 7), P2.18 (TS 5, без ttypescript), P3.26–P3.28.
+P0.5 (protobufjs 7), P2.18 (TS 5, без ttypescript), P3.26 / P3.28. Dual CJS/ESM (P3.27) уже в 1.6.0.
 
 Миграция: сменить импорты, проверить сборку `moex-arbitrage-bot`, прогнать стаканы/свечи/ордера на demo.
 

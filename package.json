@@ -1,6 +1,6 @@
 {
     "name": "@max89701/ctrader-layer",
-    "version": "1.5.1",
+    "version": "1.6.0",
     "description": "A Node.js communication layer for the cTrader Open API.",
     "license": "MIT",
     "homepage": "https://github.com/maksim-zakharov/cTrader-Layer",
@@ -18,21 +18,32 @@
     "scripts": {
         "lint": "eslint . --ext .ts,.js",
         "test": "jest",
-        "build": "ttsc",
+        "build": "tsup",
+        "build:ttsc": "ttsc",
         "pull-proto": "node scripts/pull-proto.js",
         "safe-build": "node -e \"require('fs').rmSync('build',{recursive:true,force:true})\" && npm run build",
-        "prepublishOnly": "npm run test -- --runInBand && npm run safe-build"
+        "verify:exports": "node scripts/verify-dual-exports.cjs && node scripts/verify-dual-exports.mjs",
+        "prepublishOnly": "npm run test && npm run safe-build && npm run verify:exports"
     },
     "engines": {
         "node": ">=14.17"
     },
-    "main": "./build/entry/node/main.js",
-    "types": "./build/entry/node/main.d.ts",
+    "main": "./build/main.js",
+    "module": "./build/main.mjs",
+    "types": "./build/main.d.ts",
+    "exports": {
+        ".": {
+            "types": "./build/main.d.ts",
+            "import": "./build/main.mjs",
+            "require": "./build/main.js",
+            "default": "./build/main.js"
+        },
+        "./package.json": "./package.json"
+    },
     "files": [
         "build",
-        "entry",
         "openapi-proto-messages-main",
-        "src"
+        "PROTO_VERSION"
     ],
     "dependencies": {
         "axios": "^1.6.0",
@@ -50,6 +61,7 @@
         "eslint": "^7.28.0",
         "jest": "^29.7.0",
         "ts-jest": "^29.4.12",
+        "tsup": "^8.5.0",
         "ttypescript": "^1.5.15",
         "typescript": "^4.4.4",
         "typescript-transform-paths": "^2.2.4"

@@ -2,7 +2,23 @@
 
 Документ описывает пакет **@max89701/ctrader-layer** для передачи контекста при доработке.
 
-Подробный список работ: [BACKLOG.md](./BACKLOG.md). Текущая версия: **1.5.0**.
+Подробный список работ: [BACKLOG.md](./BACKLOG.md). Текущая версия: **1.6.0**.
+
+---
+
+## 0. Linear
+
+| Поле | Значение |
+|------|----------|
+| Project | [ctrader-layer](https://linear.app/maksim-zakharov/project/ctrader-layer-898108486d89) (`P-MAK-5`) |
+| Team | Maksim Zakharov (`MAK`) |
+| Repo | https://github.com/maksim-zakharov/cTrader-Layer |
+| Потребитель | [ctrader-server](https://linear.app/maksim-zakharov/project/ctrader-server-92f6adc944fb) (`P-MAK-3`) |
+| Машиночитаемо | `.linear.json` в корне |
+
+Задачи пакета — только в `ctrader-layer`. Правки бота под новую версию слоя — в `ctrader-server`.
+
+Эпик рефакторинга после 1.5.0: [MAK-86](https://linear.app/maksim-zakharov/issue/MAK-86/epic-refaktoring-max89701ctrader-layer-posle-150).
 
 ---
 
@@ -14,7 +30,7 @@ Node.js-слой для [cTrader Open API](https://help.ctrader.com/open-api/): 
 
 Форк [reiryoku-trader/ctrader-layer](https://github.com/reiryoku-trader/ctrader-layer). Публикация: npm `@max89701/ctrader-layer`.
 
-**Стек:** TypeScript 4.4, ttypescript (path aliases), protobufjs 5.0.1, axios, uuid. Сборка: `npm run build` (`ttsc`). Тесты: `npm test` (Jest). Lint: `npm run lint`.
+**Стек:** TypeScript 4.4, protobufjs 5.0.1, axios, uuid. Сборка: `npm run build` (**tsup** → CJS `build/main.js` + ESM `build/main.mjs`). Легаси `npm run build:ttsc` (ttypescript) оставлен для отладки. Тесты: `npm test` (Jest). Проверка exports: `npm run verify:exports`. Lint: `npm run lint`.
 
 ---
 
@@ -22,7 +38,8 @@ Node.js-слой для [cTrader Open API](https://help.ctrader.com/open-api/): 
 
 ```
 cTrader-Layer/
-├── entry/node/main.ts          # публичный экспорт
+├── entry/node/main.ts          # entry для tsup
+├── tsup.config.js              # dual CJS+ESM
 ├── src/core/
 │   ├── CTraderConnection.ts    # ядро
 │   ├── CTraderCommandError.ts
@@ -32,17 +49,19 @@ cTrader-Layer/
 │   ├── commands/               # карта clientMsgId + timeout
 │   ├── types/
 │   └── *.spec.ts               # Jest
+├── build/main.js | main.mjs    # артефакты публикации
 ├── openapi-proto-messages-main/
 ├── scripts/pull-proto.js
+├── scripts/verify-dual-exports.*
 ├── BACKLOG.md
 └── AGENTS.md
 ```
 
-Публичный API: `CTraderConnection`, `CTraderCommandError`, параметры, типы.
+Публичный API: `CTraderConnection`, `CTraderCommandError`, параметры, типы. Импорт только с корня пакета (`exports["."]`).
 
 ---
 
-## 3. Контракт 1.5.0
+## 3. Контракт 1.6.0
 
 ```ts
 const connection = new CTraderConnection({
@@ -56,6 +75,8 @@ const connection = new CTraderConnection({
 
 await connection.open();
 await connection.sendCommand("ProtoOAApplicationAuthReq", { clientId, clientSecret });
+const trader = await connection.sendCommand("ProtoOATraderReq", { ctidTraderAccountId });
+// trader: ProtoOATraderResPayload (без as)
 // heartbeat сам; sendHeartbeat() не создаёт висящую команду
 
 connection.on("ProtoOASpotEvent", (payload) => { /* типизировано */ });
@@ -65,6 +86,7 @@ connection.close();
 ```
 
 `sendCommand` реджектит `CTraderCommandError` (`errorCode`, `description`, `retryAfter`). `trySendCommand` глотает только этот класс.
+Имена из `CTraderCommandMapTypes` типизируют request/response; числовой payloadType и неизвестные имена — `GenericObject` / `sendCommand<TRes>(...)`.
 
 HTTP: Bearer-заголовок, не query string.
 
